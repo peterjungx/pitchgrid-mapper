@@ -20,6 +20,9 @@ install:
 dev:
 	@./run_dev.sh
 
+run:
+	@./run_prod.sh
+
 build:
 	@echo "Building frontend..."
 	cd frontend && npm run build

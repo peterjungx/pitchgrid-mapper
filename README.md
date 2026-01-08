@@ -36,7 +36,7 @@ PG Isomap provides musicians with easy access to microtonal scales on various is
 │  │   - Isomorphic / String / Piano   │  │
 │  └───────────────────────────────────┘  │
 │  ┌───────────────────────────────────┐  │
-│  │   Web Server (FastAPI + Svelte)  │  │
+│  │   Web Server (FastAPI + Svelte)   │  │
 │  └───────────────────────────────────┘  │
 └────────┬────────────────────────────────┘
          │ MIDI Out (Virtual Port)

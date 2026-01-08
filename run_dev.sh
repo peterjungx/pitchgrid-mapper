@@ -1,5 +1,5 @@
 #!/bin/bash
-# Development startup script
+# Development startup script - Desktop app with hot reload
 
 set -e
 
@@ -23,28 +23,87 @@ fi
 echo "Syncing Python dependencies..."
 uv sync
 
-# Check if frontend is built
-if [ ! -d "frontend/dist" ]; then
+# Check if npm is installed
+if ! command -v npm &> /dev/null; then
+    echo "Error: npm is not installed"
+    exit 1
+fi
+
+# Install frontend dependencies if needed
+if [ ! -d "frontend/node_modules" ]; then
     echo ""
-    echo "Frontend not built. Building..."
+    echo "Installing frontend dependencies..."
     cd frontend
-    if ! command -v npm &> /dev/null; then
-        echo "Error: npm is not installed"
-        exit 1
-    fi
     npm install
-    npm run build
     cd ..
 fi
 
 echo ""
-echo "=== Starting PG Isomap ==="
-echo "Web UI: http://localhost:8080"
+echo "Starting Desktop App with Hot Reload..."
+echo "Backend API: http://localhost:8080"
+echo "Frontend Dev Server: http://localhost:5173 (with hot reload)"
 echo "Virtual MIDI Device: PG Isomap"
 echo ""
-echo "Press Ctrl+C to stop"
+echo "The desktop app window will load the dev server for hot reload."
+echo "Press Ctrl+C to stop all services"
 echo ""
 
-# Run with debug mode
+# Function to cleanup background processes
+cleanup() {
+    echo ""
+    echo "Stopping services..."
+    kill $BACKEND_PID 2>/dev/null || true
+    kill $FRONTEND_PID 2>/dev/null || true
+    wait $BACKEND_PID 2>/dev/null || true
+    wait $FRONTEND_PID 2>/dev/null || true
+    echo "All services stopped"
+    exit 0
+}
+
+trap cleanup SIGINT SIGTERM
+
+# Start backend in background
+echo "Starting backend..."
 export PGISOMAP_DEBUG=true
-uv run python -m pg_isomap
+uv run python -m pg_isomap &
+BACKEND_PID=$!
+
+# Give backend a moment to start
+sleep 2
+
+# Start frontend dev server in background
+echo "Starting frontend dev server..."
+cd frontend
+npm run dev &
+FRONTEND_PID=$!
+cd ..
+
+# Give frontend dev server a moment to start
+sleep 2
+
+# Start desktop app (points to dev server for hot reload)
+echo "Opening desktop app window..."
+export PGISOMAP_DEV_MODE=true
+uv run python -c "
+import webview
+import sys
+import os
+
+# Point to dev server for hot reload
+url = 'http://localhost:5173'
+
+window = webview.create_window(
+    title='PG Isomap (Dev)',
+    url=url,
+    width=1280,
+    height=800,
+    resizable=True,
+    min_size=(800, 600),
+)
+
+webview.start(debug=True)
+print('Desktop app closed')
+"
+
+# Cleanup when window closes
+cleanup

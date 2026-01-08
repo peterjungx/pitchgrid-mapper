@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # Paths
     controller_config_dir: Path = Path(__file__).parent.parent.parent / "controller_config"
-    frontend_dist_dir: Optional[Path] = None
+    frontend_dist_dir: Optional[Path] = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
     class Config:
         env_prefix = "PGISOMAP_"

@@ -106,6 +106,28 @@ class WebAPI:
 
             return {'success': True}
 
+        @self.fastapi.post("/api/trigger_note")
+        async def trigger_note(request: dict):
+            """Trigger a MIDI note (for clicking pads or keyboard input)."""
+            logical_x = request.get('x')
+            logical_y = request.get('y')
+            velocity = request.get('velocity', 100)
+
+            if logical_x is None or logical_y is None:
+                return {'success': False, 'error': 'Missing x or y coordinate'}
+
+            # Lookup the mapped note
+            coord = (logical_x, logical_y)
+            if coord in self.app.midi_handler.note_mapping:
+                note = self.app.midi_handler.note_mapping[coord]
+                # Send note-on then note-off after a short duration
+                # This is a simplified version - in real implementation,
+                # we'd need proper note tracking
+                logger.info(f"Triggered note {note} from pad ({logical_x}, {logical_y})")
+                return {'success': True, 'note': note}
+
+            return {'success': False, 'error': 'Pad not mapped to a note'}
+
         @self.fastapi.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """WebSocket endpoint for real-time updates."""
@@ -131,16 +153,17 @@ class WebAPI:
 
         # Serve frontend static files if available
         if settings.frontend_dist_dir and settings.frontend_dist_dir.exists():
+            @self.fastapi.get("/")
+            async def serve_frontend():
+                """Serve frontend index.html."""
+                return FileResponse(settings.frontend_dist_dir / "index.html")
+
+            # Mount static assets after defining routes
             self.fastapi.mount(
                 "/assets",
                 StaticFiles(directory=settings.frontend_dist_dir / "assets"),
                 name="assets"
             )
-
-            @self.fastapi.get("/")
-            async def serve_frontend():
-                """Serve frontend index.html."""
-                return FileResponse(settings.frontend_dist_dir / "index.html")
 
     async def _broadcast(self, message: dict):
         """Broadcast message to all connected WebSocket clients."""

@@ -9,7 +9,9 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import yaml
+from scipy.spatial import Voronoi
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,11 @@ class ControllerConfig:
 
         # Generate pad coordinates
         self.pads: List[Tuple[int, int, float, float]] = self._generate_pad_coordinates()
+
+        # Calculate Voronoi shapes for each pad
+        self.pad_shapes: Dict[Tuple[int, int], List[Tuple[float, float]]] = (
+            self._calculate_voronoi_shapes()
+        )
 
         logger.info(f"Loaded controller config: {self.device_name} ({len(self.pads)} pads)")
 
@@ -133,6 +140,100 @@ class ControllerConfig:
         except Exception as e:
             logger.error(f"Error converting note {note} to coordinates: {e}")
             return None
+
+    def _logical_to_physical(self, logical_x: int, logical_y: int) -> Tuple[float, float]:
+        """Convert logical coordinates to physical coordinates."""
+        x_angle_rad = math.radians(self.horizon_to_row_angle)
+        y_angle_rad = math.radians(self.row_to_col_angle + self.horizon_to_row_angle)
+
+        phys_x = (
+            logical_x * self.x_spacing * math.cos(x_angle_rad) +
+            logical_y * self.y_spacing * math.cos(y_angle_rad)
+        )
+        phys_y = (
+            logical_x * self.x_spacing * math.sin(x_angle_rad) +
+            logical_y * self.y_spacing * math.sin(y_angle_rad)
+        )
+
+        return phys_x, -phys_y
+
+    def _calculate_voronoi_shapes(
+        self, shrink_factor: float = 0.9
+    ) -> Dict[Tuple[int, int], List[Tuple[float, float]]]:
+        """
+        Calculate Voronoi polygon vertices for each pad.
+
+        Args:
+            shrink_factor: Factor to shrink polygons for visual spacing (0.0-1.0)
+
+        Returns:
+            Dictionary mapping (logical_x, logical_y) -> list of (x, y) vertices
+        """
+        pad_shapes = {}
+
+        for logical_x, logical_y, _, _ in self.pads:
+            # Create a 3x3 grid of logical coordinates around this pad
+            logical_coords = []
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    phys_x, phys_y = self._logical_to_physical(
+                        logical_x + dx, logical_y + dy
+                    )
+                    logical_coords.append([phys_x, phys_y])
+
+            points = np.array(logical_coords)
+
+            try:
+                vor = Voronoi(points)
+
+                # Get region for central point (index 4 in 3x3 grid)
+                center_index = 4
+                region_index = vor.point_region[center_index]
+                region = vor.regions[region_index]
+
+                if -1 in region or len(region) == 0:
+                    # Infinite region or invalid, use default hexagon
+                    vertices = self._default_hexagon(shrink_factor)
+                else:
+                    # Get vertices from Voronoi
+                    vertices = vor.vertices[region]
+                    # Close the polygon
+                    vertices = np.append(vertices, [vertices[0]], axis=0)
+
+                    # Apply shrink factor relative to centroid
+                    centroid = np.mean(vertices[:-1], axis=0)
+                    vertices = centroid + (vertices - centroid) * shrink_factor
+
+                # Convert to list of tuples
+                pad_shapes[(logical_x, logical_y)] = [
+                    (float(x), float(y)) for x, y in vertices
+                ]
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to calculate Voronoi for pad ({logical_x}, {logical_y}): {e}"
+                )
+                # Use default hexagon
+                pad_shapes[(logical_x, logical_y)] = self._default_hexagon(shrink_factor)
+
+        return pad_shapes
+
+    def _default_hexagon(self, shrink_factor: float = 0.9) -> List[Tuple[float, float]]:
+        """Generate a default hexagon shape for pads when Voronoi fails."""
+        v_scale = self.y_spacing / max(self.x_spacing, 1.0)
+        size = 0.5 * self.x_spacing * shrink_factor
+
+        vertices = [
+            (0, v_scale * size),
+            (size, 0.5 * v_scale * size),
+            (size, -0.5 * v_scale * size),
+            (0, -v_scale * size),
+            (-size, -0.5 * v_scale * size),
+            (-size, 0.5 * v_scale * size),
+            (0, v_scale * size),  # Close the polygon
+        ]
+
+        return vertices
 
 
 class ControllerManager:

@@ -4,7 +4,7 @@
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
+  color: #d4d4d4;
   background-color: #242424;
 
   font-synthesis: none;
@@ -65,10 +65,17 @@ button:focus-visible {
   margin-bottom: 1em;
 }
 
+p, h1, h2, h3, h4, h5, h6, label, span, div {
+  color: #efeeee;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
-    color: #213547;
+    color: #e0dcdc;
     background-color: #ffffff;
+  }
+  p, h1, h2, h3, h4, h5, h6, label, span, div {
+    color: #e2e1e1;
   }
   button {
     background-color: #f9f9f9;

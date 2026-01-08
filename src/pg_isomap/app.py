@@ -57,6 +57,9 @@ class PGIsomapApp:
         """Start the application."""
         logger.info("Starting PG Isomap...")
 
+        # Try to auto-load computer keyboard config FIRST
+        self._try_load_computer_keyboard()
+
         # Initialize virtual MIDI port
         if not self.midi_handler.initialize_virtual_port():
             logger.error("Failed to create virtual MIDI port")
@@ -71,10 +74,8 @@ class PGIsomapApp:
         # Start controller discovery
         self._start_discovery()
 
-        # Try to auto-load computer keyboard config
-        self._try_load_computer_keyboard()
-
         logger.info("PG Isomap started successfully")
+        logger.info(f"Current controller: {self.current_controller.device_name if self.current_controller else 'None'}")
         return True
 
     def stop(self):
@@ -126,7 +127,7 @@ class PGIsomapApp:
 
     def _try_load_computer_keyboard(self):
         """Try to load computer keyboard config on startup."""
-        kb_config = self.controller_manager.get_config("ComputerKeyboard")
+        kb_config = self.controller_manager.get_config("Computer Keyboard")
         if kb_config:
             self.current_controller = kb_config
             self._recalculate_layout()
@@ -260,11 +261,39 @@ class PGIsomapApp:
 
     def get_status(self) -> dict:
         """Get current application status."""
+        # Get detected controllers (those actually available via MIDI)
+        available_ports = self.midi_handler.get_available_controllers()
+        detected_controllers = []
+        for config_name in self.controller_manager.get_all_device_names():
+            config = self.controller_manager.get_config(config_name)
+            if config and config.device_name != "Computer Keyboard":
+                # Check if this controller's MIDI device is available
+                for port in available_ports:
+                    if config.midi_device_name.lower() in port.lower():
+                        detected_controllers.append(config_name)
+                        break
+
+        # Get controller pads for visualization
+        controller_pads = []
+        if self.current_controller:
+            controller_pads = [
+                {
+                    'x': x,
+                    'y': y,
+                    'phys_x': px,
+                    'phys_y': py,
+                    'shape': self.current_controller.pad_shapes.get((x, y), [])
+                }
+                for x, y, px, py in self.current_controller.pads
+            ]
+
         return {
             'connected_controller': self.current_controller.device_name if self.current_controller else None,
             'layout_type': self.current_layout_config.layout_type.value,
             'virtual_midi_device': settings.virtual_midi_device_name,
             'available_controllers': self.controller_manager.get_all_device_names(),
+            'detected_controllers': detected_controllers,
+            'controller_pads': controller_pads,
             'midi_stats': {
                 'messages_processed': self.midi_handler.messages_processed,
                 'notes_remapped': self.midi_handler.notes_remapped,

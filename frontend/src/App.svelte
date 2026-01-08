@@ -1,11 +1,21 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import ControllerCanvas from './ControllerCanvas.svelte';
+
+  interface Pad {
+    x: number;
+    y: number;
+    phys_x: number;
+    phys_y: number;
+  }
 
   interface AppStatus {
     connected_controller: string | null;
     layout_type: string;
     virtual_midi_device: string;
     available_controllers: string[];
+    detected_controllers: string[];
+    controller_pads: Pad[];
     midi_stats: {
       messages_processed: number;
       notes_remapped: number;
@@ -50,20 +60,23 @@
   async function fetchStatus() {
     try {
       const response = await fetch('/api/status');
-      status = await response.json();
+      const data = await response.json();
+      console.log('Fetched status:', data);
+      status = data;
     } catch (error) {
       console.error('Error fetching status:', error);
     }
   }
 
-  async function connectController() {
-    if (!selectedController) return;
+  async function connectController(deviceName?: string) {
+    const name = deviceName || selectedController;
+    if (!name) return;
 
     try {
       const response = await fetch('/api/controllers/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_name: selectedController }),
+        body: JSON.stringify({ device_name: name }),
       });
 
       const result = await response.json();
@@ -84,6 +97,25 @@
     }
   }
 
+  async function handlePadClick(x: number, y: number) {
+    console.log(`Pad clicked: (${x}, ${y})`);
+    try {
+      const response = await fetch('/api/trigger_note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y, velocity: 100 }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        console.log(`Triggered note: ${result.note}`);
+      } else {
+        console.warn('Pad not mapped:', result.error);
+      }
+    } catch (error) {
+      console.error('Error triggering note:', error);
+    }
+  }
+
   onMount(() => {
     connectWebSocket();
     fetchStatus();
@@ -101,32 +133,46 @@
 
   {#if status}
     <div class="card">
-      <h2>Status</h2>
-      <p><strong>Virtual MIDI Device:</strong> {status.virtual_midi_device}</p>
-      <p><strong>Connected Controller:</strong> {status.connected_controller || 'None'}</p>
-      <p><strong>Layout Type:</strong> {status.layout_type}</p>
-      <p><strong>Messages Processed:</strong> {status.midi_stats.messages_processed}</p>
-      <p><strong>Notes Remapped:</strong> {status.midi_stats.notes_remapped}</p>
+      <h2>Controller Visualization</h2>
+      {#if status.controller_pads.length > 0}
+        <ControllerCanvas
+          pads={status.controller_pads}
+          deviceName={status.connected_controller || 'Computer Keyboard'}
+          onPadClick={handlePadClick}
+        />
+      {:else}
+        <p>No controller loaded</p>
+      {/if}
     </div>
 
     <div class="card">
       <h2>Controller Connection</h2>
 
-      {#if status.connected_controller}
+      {#if status.connected_controller && status.connected_controller !== 'Computer Keyboard'}
         <p>Connected to: <strong>{status.connected_controller}</strong></p>
         <button on:click={disconnectController}>Disconnect</button>
       {:else}
-        <p>Select a controller to connect:</p>
-        <select bind:value={selectedController}>
-          <option value="">-- Select Controller --</option>
-          {#each status.available_controllers as controller}
-            <option value={controller}>{controller}</option>
+        {#if status.detected_controllers.length > 0}
+          <p>Detected controllers:</p>
+          {#each status.detected_controllers as controller}
+            <div class="detected-controller">
+              <span>{controller} detected.</span>
+              <button on:click={() => connectController(controller)}>Connect</button>
+            </div>
           {/each}
-        </select>
-        <button on:click={connectController} disabled={!selectedController}>
-          Connect
-        </button>
+        {:else}
+          <p>No physical controllers detected.</p>
+        {/if}
+        <p class="info-text">Using Computer Keyboard layout by default.</p>
       {/if}
+    </div>
+
+    <div class="card">
+      <h2>Status</h2>
+      <p><strong>Virtual MIDI Device:</strong> {status.virtual_midi_device}</p>
+      <p><strong>Layout Type:</strong> {status.layout_type}</p>
+      <p><strong>Messages Processed:</strong> {status.midi_stats.messages_processed}</p>
+      <p><strong>Notes Remapped:</strong> {status.midi_stats.notes_remapped}</p>
     </div>
 
     <div class="card">
@@ -161,12 +207,29 @@
     border-radius: 4px;
     border: 1px solid #444;
     background-color: #1a1a1a;
-    color: inherit;
+    color: #d4d4d4;
     font-size: 1em;
   }
 
   button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .detected-controller {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    padding: 0.5em 0;
+  }
+
+  .detected-controller span {
+    flex: 1;
+  }
+
+  .info-text {
+    margin-top: 1em;
+    font-size: 0.9em;
+    color: #888;
   }
 </style>
