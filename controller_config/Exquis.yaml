@@ -1,6 +1,5 @@
 DeviceName: "Exquis"
 MIDIDeviceName: "Exquis MIDI"
-virtualMIDIDeviceName: "PitchGrid Exquis"
 isMPE: true
 hasGlobalPitchBend: false
 NumRows: 11

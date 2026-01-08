@@ -62,6 +62,7 @@ class ControllerConfig:
         # Note mapping functions
         self.note_to_coord_x: Optional[str] = self.config.get('noteToCoordX')
         self.note_to_coord_y: Optional[str] = self.config.get('noteToCoordY')
+        self.note_assign: Optional[str] = self.config.get('noteAssign')
 
         # Generate pad coordinates
         self.pads: List[Tuple[int, int, float, float]] = self._generate_pad_coordinates()
@@ -140,6 +141,77 @@ class ControllerConfig:
         except Exception as e:
             logger.error(f"Error converting note {note} to coordinates: {e}")
             return None
+
+    def logical_coord_to_controller_note(self, x: int, y: int) -> Optional[int]:
+        """
+        Calculate controller MIDI note from logical coordinate using noteAssign.
+
+        Args:
+            x: Logical X coordinate
+            y: Logical Y coordinate
+
+        Returns:
+            MIDI note number assigned to this coordinate, or None if noteAssign not defined
+        """
+        if not self.note_assign:
+            return None
+
+        try:
+            # Helper function for cumulative index calculation
+            def cumulativeIndex(x: int, y: int) -> int:
+                """Calculate cumulative index for a logical coordinate."""
+                # Find the row index for this y coordinate
+                row_idx = y - self.first_row_idx
+                if row_idx < 0 or row_idx >= self.num_rows:
+                    return 0
+
+                # Calculate cumulative offset up to this row
+                cumulative_offset = -sum([
+                    self.row_offsets[e]
+                    for e, _ in enumerate(range(self.first_row_idx, 0))
+                ])
+
+                for i in range(row_idx):
+                    if i > 0:
+                        cumulative_offset += self.row_offsets[i - 1]
+
+                # Calculate column index within the row
+                col_idx = x - cumulative_offset
+
+                # Sum up all pads in previous rows
+                pads_before = sum(self.row_lengths[:row_idx])
+
+                # Add column index
+                return pads_before + col_idx
+
+            # Safe eval with limited scope and helper functions
+            scope = {
+                'x': x,
+                'y': y,
+                'cumulativeIndex': cumulativeIndex,
+            }
+            note = eval(self.note_assign, {"__builtins__": {}}, scope)
+            return int(note)
+        except Exception as e:
+            logger.error(f"Error calculating controller note for ({x}, {y}): {e}")
+            return None
+
+    def build_controller_note_mapping(self) -> Dict[int, Tuple[int, int]]:
+        """
+        Build reverse mapping from controller MIDI note to logical coordinate.
+
+        Returns:
+            Dictionary mapping controller_note -> (logical_x, logical_y)
+        """
+        reverse_mapping = {}
+
+        for logical_x, logical_y, _, _ in self.pads:
+            controller_note = self.logical_coord_to_controller_note(logical_x, logical_y)
+            if controller_note is not None and 0 <= controller_note <= 127:
+                reverse_mapping[controller_note] = (logical_x, logical_y)
+
+        logger.info(f"Built controller note mapping: {len(reverse_mapping)} pads mapped")
+        return reverse_mapping
 
     def _logical_to_physical(self, logical_x: int, logical_y: int) -> Tuple[float, float]:
         """Convert logical coordinates to physical coordinates."""

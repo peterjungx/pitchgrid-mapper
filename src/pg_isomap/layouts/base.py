@@ -58,7 +58,8 @@ class LayoutCalculator(ABC):
         self,
         logical_coords: List[Tuple[int, int]],
         scale_degrees: List[int],
-        scale_size: int
+        scale_size: int,
+        **kwargs
     ) -> Dict[Tuple[int, int], int]:
         """
         Calculate the mapping from logical coordinates to scale degrees.
@@ -67,6 +68,7 @@ class LayoutCalculator(ABC):
             logical_coords: List of available (logical_x, logical_y) coordinates
             scale_degrees: List of MIDI note numbers from PitchGrid
             scale_size: Number of notes in the scale
+            **kwargs: Additional arguments (mos, coord_to_scale_index, etc.)
 
         Returns:
             Dictionary mapping (logical_x, logical_y) -> MIDI note number

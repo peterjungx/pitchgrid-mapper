@@ -9,7 +9,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 from .coloring import DEFAULT_COLORING_SCHEME
 from .config import settings
@@ -59,6 +59,7 @@ class PGIsomapApp:
         self.osc_handler.on_scale_update = self._handle_scale_update
         self.osc_handler.on_note_mapping = self._handle_note_mapping
         self.osc_handler.on_connection_changed = self._handle_osc_connection_changed
+        self.midi_handler.get_scale_coord = self._get_scale_coordinate
 
     def start(self):
         """Start the application."""
@@ -166,6 +167,9 @@ class PGIsomapApp:
         # Reset layout calculator to default when changing controllers
         self.current_layout_calculator = None
 
+        # Send controller setup messages
+        self._send_controller_setup()
+
         # Recalculate layout
         self._recalculate_layout()
 
@@ -254,18 +258,13 @@ class PGIsomapApp:
             logical_coords,
             self.tuning_handler.scale_degrees,
             self.tuning_handler.steps,
-            mos=self.tuning_handler.mos
+            mos=self.tuning_handler.mos,
+            coord_to_scale_index=self.tuning_handler.coord_to_scale_index
         )
 
         # Build reverse mapping (controller_note -> logical_coord)
-        # This requires knowing how the controller maps its physical pads to MIDI notes
-        reverse_mapping: Dict[int, Tuple[int, int]] = {}
-
-        for logical_x, logical_y in logical_coords:
-            # Use controller's note mapping function if available
-            controller_note = self._logical_to_controller_note(logical_x, logical_y)
-            if controller_note is not None:
-                reverse_mapping[controller_note] = (logical_x, logical_y)
+        # Use controller's noteAssign function
+        reverse_mapping = self.current_controller.build_controller_note_mapping()
 
         # Update MIDI handler
         self.midi_handler.update_note_mapping(mapping, reverse_mapping)
@@ -279,26 +278,8 @@ class PGIsomapApp:
         if self.web_api:
             self.web_api.broadcast_status_update()
 
-    def _logical_to_controller_note(self, logical_x: int, logical_y: int) -> Optional[int]:
-        """
-        Convert logical coordinate to controller's native MIDI note number.
-
-        This is controller-specific. For now, use a simple formula.
-        Real implementation should use controller config.
-        """
-        if not self.current_controller:
-            return None
-
-        # For LinnStrument: note = x + y * 16
-        # For other controllers, this varies
-        # TODO: Make this configurable in controller YAML
-
-        # Simple default: assume row-major layout
-        note = logical_x + logical_y * 16
-
-        if 0 <= note <= 127:
-            return note
-        return None
+        # Send color updates to physical controller
+        self._send_pad_colors()
 
     def _handle_scale_update(self, scale_data: dict):
         """Handle scale/tuning update from PitchGrid plugin."""
@@ -345,6 +326,70 @@ class PGIsomapApp:
         # Broadcast updated status to WebSocket clients
         if self.web_api:
             self.web_api.broadcast_status_update()
+
+    def _get_scale_coordinate(self, logical_x: int, logical_y: int) -> Optional[tuple[int, int]]:
+        """
+        Get scale coordinate for a logical coordinate.
+
+        Args:
+            logical_x: Logical X coordinate
+            logical_y: Logical Y coordinate
+
+        Returns:
+            Scale (MOS) coordinate tuple or None
+        """
+        if self.current_layout_calculator and hasattr(self.current_layout_calculator, 'get_mos_coordinate'):
+            try:
+                return self.current_layout_calculator.get_mos_coordinate(logical_x, logical_y)
+            except Exception:
+                return None
+        return None
+
+    def trigger_note(self, logical_x: int, logical_y: int, velocity: int = 100, note_on: bool = True, source: str = "ui") -> bool:
+        """
+        Trigger a MIDI note from UI or other source.
+
+        Args:
+            logical_x: Logical X coordinate
+            logical_y: Logical Y coordinate
+            velocity: Note velocity (0-127)
+            note_on: True for note-on, False for note-off
+            source: Source of trigger ("ui" or "device")
+
+        Returns:
+            True if note was triggered successfully
+        """
+        coord = (logical_x, logical_y)
+
+        # Look up mapped note
+        if coord not in self.midi_handler.note_mapping:
+            logger.info(f"{source} note_{'on' if note_on else 'off'} -> ({logical_x}, {logical_y}) -> unmapped")
+            return False
+
+        note = self.midi_handler.note_mapping[coord]
+
+        # Get scale coordinate if available
+        scale_coord_str = "?"
+        if self.current_layout_calculator and hasattr(self.current_layout_calculator, 'get_mos_coordinate'):
+            try:
+                mos_coord = self.current_layout_calculator.get_mos_coordinate(logical_x, logical_y)
+                scale_coord_str = f"({mos_coord[0]}, {mos_coord[1]})"
+            except Exception:
+                pass
+
+        # Log the full pipeline
+        note_type = "note_on" if note_on else "note_off"
+        logger.info(
+            f"{source} {note_type} -> ({logical_x}, {logical_y}) -> {scale_coord_str} -> note {note}"
+        )
+
+        # Send MIDI message
+        if note_on:
+            self.midi_handler.send_note_on(note, velocity)
+        else:
+            self.midi_handler.send_note_off(note)
+
+        return True
 
     def get_status(self) -> dict:
         """Get current application status."""
@@ -413,3 +458,173 @@ class PGIsomapApp:
                 'notes_remapped': self.midi_handler.notes_remapped,
             }
         }
+
+    def _send_controller_setup(self):
+        """Send note assignment setup to controller on connection."""
+        if not self.current_controller or not self.midi_handler:
+            return
+
+        # Only send if template exists
+        if not self.current_controller.set_pad_notes_bulk:
+            logger.debug("No SetPadNotesBulk template, skipping controller setup")
+            return
+
+        try:
+            from .midi_setup import MIDITemplateBuilder
+
+            # Build list of pads with their controller notes
+            pads = []
+            for logical_x, logical_y, _, _ in self.current_controller.pads:
+                controller_note = self.current_controller.logical_coord_to_controller_note(logical_x, logical_y)
+                if controller_note is not None:
+                    pads.append({
+                        'x': logical_x,
+                        'y': logical_y,
+                        'noteNumber': controller_note,
+                        'midiChannel': 0
+                    })
+
+            # Build and send MIDI message
+            builder = MIDITemplateBuilder(self.current_controller)
+            midi_bytes = builder.set_pad_notes_bulk(pads)
+
+            if midi_bytes:
+                self.midi_handler.send_raw_bytes(midi_bytes)
+                logger.info(f"Sent SetPadNotesBulk: {len(pads)} pads, {len(midi_bytes)} bytes")
+
+        except Exception as e:
+            logger.error(f"Error sending controller setup: {e}", exc_info=True)
+
+    def _send_pad_colors(self):
+        """Send color updates to physical controller."""
+        if not self.current_controller or not self.midi_handler:
+            return
+
+        # Only send if we have color templates
+        if not (self.current_controller.set_pad_colors_bulk or self.current_controller.set_pad_color):
+            return
+
+        try:
+            from .midi_setup import MIDITemplateBuilder
+
+            # Get current status with colors
+            status = self.get_status()
+            controller_pads = status.get('controller_pads', [])
+
+            # Build pad data with RGB colors for ALL pads
+            pads_with_colors = []
+            for pad in controller_pads:
+                # Convert HSL color to RGB
+                # Use gray for unmapped pads, otherwise use pad's color
+                if pad.get('color'):
+                    hsl_color = pad['color']
+                else:
+                    # Unmapped pad - use dark gray
+                    hsl_color = 'hsl(0, 0%, 20%)'
+
+                rgb = self._hsl_to_rgb(hsl_color)
+
+                pads_with_colors.append({
+                    'x': pad['x'],
+                    'y': pad['y'],
+                    'red': rgb[0],
+                    'green': rgb[1],
+                    'blue': rgb[2],
+                    'color': self._rgb_to_controller_enum(rgb)
+                })
+
+            if not pads_with_colors:
+                return
+
+            # Build and send MIDI message
+            builder = MIDITemplateBuilder(self.current_controller)
+
+            # Prefer bulk if available
+            if self.current_controller.set_pad_colors_bulk:
+                midi_bytes = builder.set_pad_colors_bulk(pads_with_colors)
+                if midi_bytes:
+                    self.midi_handler.send_raw_bytes(midi_bytes)
+                    logger.info(f"Sent SetPadColorsBulk: {len(pads_with_colors)} pads, {len(midi_bytes)} bytes")
+
+            # Fallback to individual messages
+            elif self.current_controller.set_pad_color:
+                for pad in pads_with_colors:
+                    midi_bytes = builder.set_pad_color(
+                        pad['x'], pad['y'],
+                        pad['red'], pad['green'], pad['blue'],
+                        pad['color']
+                    )
+                    if midi_bytes:
+                        self.midi_handler.send_raw_bytes(midi_bytes)
+                logger.info(f"Sent SetPadColor for {len(pads_with_colors)} pads individually")
+
+        except Exception as e:
+            logger.error(f"Error sending pad colors: {e}", exc_info=True)
+
+    def _hsl_to_rgb(self, hsl_string: str) -> tuple[int, int, int]:
+        """
+        Convert HSL color string to RGB tuple.
+
+        Args:
+            hsl_string: HSL string like "hsl(120, 100%, 50%)"
+
+        Returns:
+            RGB tuple (0-255, 0-255, 0-255)
+        """
+        import colorsys
+        import re
+
+        # Parse HSL string
+        match = re.match(r'hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)', hsl_string)
+        if not match:
+            logger.warning(f"Invalid HSL format: {hsl_string}, using gray")
+            return (128, 128, 128)
+
+        h = int(match.group(1)) / 360.0
+        s = int(match.group(2)) / 100.0
+        l = int(match.group(3)) / 100.0
+
+        # Convert to RGB
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        return (int(r * 255), int(g * 255), int(b * 255))
+
+    def _rgb_to_controller_enum(self, rgb: tuple[int, int, int]) -> int:
+        """
+        Convert RGB to controller-specific color enum (for LinnStrument).
+
+        Args:
+            rgb: RGB tuple (0-255, 0-255, 0-255)
+
+        Returns:
+            Color enum value (1-11 for LinnStrument, or 0 if not applicable)
+        """
+        # Only LinnStrument uses color enums
+        if not self.current_controller or 'LinnStrument' not in self.current_controller.device_name:
+            return 0
+
+        # LinnStrument color mapping
+        LINNSTRUMENT_COLORS = {
+            (255, 0, 0): 1,      # Red
+            (255, 255, 0): 2,    # Yellow
+            (0, 255, 0): 3,      # Green
+            (0, 255, 255): 4,    # Cyan
+            (0, 0, 255): 5,      # Blue
+            (255, 0, 255): 6,    # Magenta
+            (0, 0, 0): 7,        # Off
+            (255, 255, 255): 8,  # White
+            (255, 127, 0): 9,    # Orange
+            (127, 255, 0): 10,   # Lime
+            (255, 0, 127): 11,   # Pink
+        }
+
+        # Find nearest color by Euclidean distance
+        min_dist = float('inf')
+        nearest_enum = 7  # Default to Off
+
+        for color_rgb, enum_val in LINNSTRUMENT_COLORS.items():
+            dist = sum((a - b) ** 2 for a, b in zip(rgb, color_rgb))
+            if dist < min_dist:
+                min_dist = dist
+                nearest_enum = enum_val
+
+        return nearest_enum

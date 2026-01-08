@@ -1,6 +1,5 @@
 DeviceName: "Computer Keyboard"
 MIDIDeviceName: none
-virtualMIDIDeviceName: "PitchGrid Computer Keyboard"
 isMPE: false
 hasGlobalPitchBend: false
 NumRows: 4

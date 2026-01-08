@@ -9,7 +9,7 @@ import logging
 import queue
 import threading
 import time
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import rtmidi
 from rtmidi.midiconstants import NOTE_OFF, NOTE_ON
@@ -27,11 +27,15 @@ class MIDIHandler:
         self.midi_in: Optional[rtmidi.MidiIn] = None
         self.midi_out: Optional[rtmidi.MidiOut] = None
         self.controller_port: Optional[rtmidi.MidiIn] = None
+        self.controller_out: Optional[rtmidi.MidiOut] = None  # Output TO controller for setup messages
 
         # Note mapping table (logical_x, logical_y) -> midi_note
         self.note_mapping: Dict[Tuple[int, int], int] = {}
         # Reverse mapping: controller_note -> (logical_x, logical_y)
         self.reverse_mapping: Dict[int, Tuple[int, int]] = {}
+
+        # Callback for getting scale coordinates
+        self.get_scale_coord: Optional[Callable[[int, int], Optional[Tuple[int, int]]]] = None
 
         # Thread control
         self._running = False
@@ -54,30 +58,45 @@ class MIDIHandler:
             return False
 
     def connect_to_controller(self, port_name: str) -> bool:
-        """Connect to a physical controller."""
+        """Connect to a physical controller (both input and output)."""
         try:
             if self.controller_port:
                 self.disconnect_controller()
 
+            # Open MIDI input from controller
             self.midi_in = rtmidi.MidiIn()
-
-            # Find the port
-            ports = self.midi_in.get_ports()
-            port_index = None
-            for i, p in enumerate(ports):
+            in_ports = self.midi_in.get_ports()
+            in_port_index = None
+            for i, p in enumerate(in_ports):
                 if port_name in p:
-                    port_index = i
+                    in_port_index = i
                     break
 
-            if port_index is None:
-                logger.error(f"Controller port '{port_name}' not found")
+            if in_port_index is None:
+                logger.error(f"Controller input port '{port_name}' not found")
                 return False
 
-            self.midi_in.open_port(port_index)
+            self.midi_in.open_port(in_port_index)
             self.midi_in.set_callback(self._midi_callback)
             self.controller_port = self.midi_in
 
-            logger.info(f"Connected to controller: {port_name}")
+            # Open MIDI output to controller (for setup messages)
+            self.controller_out = rtmidi.MidiOut()
+            out_ports = self.controller_out.get_ports()
+            out_port_index = None
+            for i, p in enumerate(out_ports):
+                if port_name in p:
+                    out_port_index = i
+                    break
+
+            if out_port_index is not None:
+                self.controller_out.open_port(out_port_index)
+                logger.info(f"Connected to controller (bidirectional): {port_name}")
+            else:
+                logger.warning(f"Controller output port not found, setup messages will not work")
+                self.controller_out = None
+                logger.info(f"Connected to controller (input only): {port_name}")
+
             return True
 
         except Exception as e:
@@ -90,10 +109,18 @@ class MIDIHandler:
             try:
                 self.controller_port.close_port()
             except Exception as e:
-                logger.error(f"Error closing controller port: {e}")
+                logger.error(f"Error closing controller input port: {e}")
             finally:
                 self.controller_port = None
                 self.midi_in = None
+
+        if self.controller_out:
+            try:
+                self.controller_out.close_port()
+            except Exception as e:
+                logger.error(f"Error closing controller output port: {e}")
+            finally:
+                self.controller_out = None
 
     def _midi_callback(self, event, data=None):
         """MIDI input callback - runs in rtmidi's thread."""
@@ -177,14 +204,31 @@ class MIDIHandler:
                         channel = message[0] & 0x0F
                         controller_note = message[1]
                         velocity = message[2]
+                        note_type = "note_on" if status == NOTE_ON else "note_off"
 
                         # Look up in reverse mapping
                         if controller_note in self.reverse_mapping:
                             logical_coord = self.reverse_mapping[controller_note]
 
+                            # Get scale coordinate if callback is available (before checking if mapped)
+                            scale_coord_str = "?"
+                            if self.get_scale_coord:
+                                try:
+                                    scale_coord = self.get_scale_coord(logical_coord[0], logical_coord[1])
+                                    if scale_coord:
+                                        scale_coord_str = f"({scale_coord[0]}, {scale_coord[1]})"
+                                except Exception:
+                                    pass
+
                             # Look up mapped note
                             if logical_coord in self.note_mapping:
                                 mapped_note = self.note_mapping[logical_coord]
+
+                                # Log the full pipeline
+                                # Format: device note_{on/off} {incoming_note} -> (lx, ly) -> (sx, sy) -> note {outgoing_note}
+                                logger.info(
+                                    f"device {note_type} {controller_note} -> ({logical_coord[0]}, {logical_coord[1]}) -> {scale_coord_str} -> note {mapped_note}"
+                                )
 
                                 # Send remapped note
                                 remapped_message = [message[0], mapped_note, velocity]
@@ -192,6 +236,12 @@ class MIDIHandler:
                                 self.notes_remapped += 1
                                 self.messages_processed += 1
                                 continue
+                            else:
+                                logger.info(
+                                    f"device {note_type} {controller_note} -> ({logical_coord[0]}, {logical_coord[1]}) -> {scale_coord_str} -> unmapped"
+                                )
+                        else:
+                            logger.info(f"device {note_type} {controller_note} -> unmapped (no logical coord)")
 
                 # Pass through unchanged (non-note or unmapped)
                 self.midi_out.send_message(message)
@@ -212,6 +262,100 @@ class MIDIHandler:
         except Exception as e:
             logger.error(f"Error getting MIDI ports: {e}")
             return []
+
+    def send_note_on(self, note: int, velocity: int = 100, channel: int = 0):
+        """
+        Send a MIDI note-on message to the virtual output.
+
+        Args:
+            note: MIDI note number (0-127)
+            velocity: Note velocity (0-127)
+            channel: MIDI channel (0-15)
+        """
+        if not self.midi_out:
+            logger.warning("Cannot send note-on: virtual MIDI port not initialized")
+            return
+
+        if not (0 <= note <= 127 and 0 <= velocity <= 127 and 0 <= channel <= 15):
+            logger.warning(f"Invalid MIDI parameters: note={note}, velocity={velocity}, channel={channel}")
+            return
+
+        try:
+            message = [NOTE_ON | channel, note, velocity]
+            self.midi_out.send_message(message)
+            logger.debug(f"Sent note-on: note={note}, velocity={velocity}, channel={channel}")
+        except Exception as e:
+            logger.error(f"Error sending note-on: {e}")
+
+    def send_note_off(self, note: int, channel: int = 0):
+        """
+        Send a MIDI note-off message to the virtual output.
+
+        Args:
+            note: MIDI note number (0-127)
+            channel: MIDI channel (0-15)
+        """
+        if not self.midi_out:
+            logger.warning("Cannot send note-off: virtual MIDI port not initialized")
+            return
+
+        if not (0 <= note <= 127 and 0 <= channel <= 15):
+            logger.warning(f"Invalid MIDI parameters: note={note}, channel={channel}")
+            return
+
+        try:
+            message = [NOTE_OFF | channel, note, 0]
+            self.midi_out.send_message(message)
+            logger.debug(f"Sent note-off: note={note}, channel={channel}")
+        except Exception as e:
+            logger.error(f"Error sending note-off: {e}")
+
+    def send_raw_bytes(self, data: List[int], delay_ms: float = 1.5):
+        """
+        Send arbitrary MIDI message bytes TO THE CONTROLLER.
+
+        Used for controller setup messages (colors, note assignments, etc).
+
+        Handles:
+        - SysEx messages (start with 0xF0, end with 0xF7): sent as single message
+        - Multiple CC messages: split into 3-byte chunks and send separately
+        - Other messages: sent as-is if <= 3 bytes
+
+        Args:
+            data: List of MIDI bytes to send
+            delay_ms: Delay in milliseconds between consecutive messages (default 1.5ms)
+        """
+        if not self.controller_out:
+            logger.warning("Cannot send MIDI to controller: no output port connected")
+            return
+
+        if not data:
+            return
+
+        try:
+            # SysEx message - send as single message
+            if data[0] == 0xF0:
+                self.controller_out.send_message(data)
+                logger.debug(f"Sent SysEx to controller: {len(data)} bytes")
+            # Multiple CC messages concatenated together
+            elif len(data) > 3:
+                # Split into 3-byte chunks (status, data1, data2)
+                num_messages = 0
+                for i in range(0, len(data), 3):
+                    if i + 2 < len(data):
+                        chunk = data[i:i+3]
+                        self.controller_out.send_message(chunk)
+                        num_messages += 1
+                        # Add delay between messages to avoid overwhelming the device
+                        if i + 3 < len(data):  # Don't delay after last message
+                            time.sleep(delay_ms / 1000.0)
+                logger.debug(f"Sent {num_messages} MIDI messages to controller ({len(data)} bytes total)")
+            # Single short message
+            else:
+                self.controller_out.send_message(data)
+                logger.debug(f"Sent MIDI to controller: {len(data)} bytes")
+        except Exception as e:
+            logger.error(f"Error sending MIDI to controller: {e}")
 
     def shutdown(self):
         """Clean shutdown."""

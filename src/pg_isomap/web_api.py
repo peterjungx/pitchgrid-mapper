@@ -146,21 +146,26 @@ class WebAPI:
             logical_x = request.get('x')
             logical_y = request.get('y')
             velocity = request.get('velocity', 100)
+            note_on = request.get('note_on', True)  # True for note-on, False for note-off
 
             if logical_x is None or logical_y is None:
                 return {'success': False, 'error': 'Missing x or y coordinate'}
 
-            # Lookup the mapped note
-            coord = (logical_x, logical_y)
-            if coord in self.app.midi_handler.note_mapping:
-                note = self.app.midi_handler.note_mapping[coord]
-                # Send note-on then note-off after a short duration
-                # This is a simplified version - in real implementation,
-                # we'd need proper note tracking
-                logger.info(f"Triggered note {note} from pad ({logical_x}, {logical_y})")
-                return {'success': True, 'note': note}
+            # Use app's trigger_note method for consistent logging
+            success = self.app.trigger_note(
+                logical_x,
+                logical_y,
+                velocity,
+                note_on,
+                source="ui"
+            )
 
-            return {'success': False, 'error': 'Pad not mapped to a note'}
+            if success:
+                coord = (logical_x, logical_y)
+                note = self.app.midi_handler.note_mapping.get(coord)
+                return {'success': True, 'note': note}
+            else:
+                return {'success': False, 'error': 'Pad not mapped to a note'}
 
         @self.fastapi.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):

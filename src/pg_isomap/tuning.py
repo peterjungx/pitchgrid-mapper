@@ -7,7 +7,7 @@ Processes tuning data from PitchGrid plugin and calculates scale degrees.
 import logging
 from typing import Optional
 
-import scalatrix
+import scalatrix as sx
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +26,14 @@ class TuningHandler:
         self.steps: int = 12
 
         # MOS object and scale info
-        self.mos: Optional[scalatrix.MOS] = None
+        self.mos: Optional[sx.MOS] = None
         self.scale_degrees: list[int] = []
         self.L: int = 12  # Large steps
         self.s: int = 0   # Small steps
+
+        # Scale object and coordinate mapping
+        self.scale: Optional[sx.Scale] = None
+        self.coord_to_scale_index: dict[tuple[int, int], int] = {}
 
         # Initialize with default MOS (12-EDO chromatic)
         self._calculate_mos()
@@ -77,7 +81,7 @@ class TuningHandler:
         """Calculate MOS from current tuning parameters."""
         try:
             # Create MOS using fromG (depth, mode, skew, stretch, repetitions)
-            self.mos = scalatrix.MOS.fromG(
+            self.mos = sx.MOS.fromG(
                 self.depth,
                 self.mode,
                 self.skew,
@@ -94,15 +98,48 @@ class TuningHandler:
             self.L = self.mos.nL
             self.s = self.mos.nS
 
+            onscreen_affine = sx.affineFromThreeDots(
+                sx.Vector2d(0,0), 
+                sx.Vector2d(self.mos.v_gen.x, self.mos.v_gen.y),
+                sx.Vector2d(self.mos.a, self.mos.b), 
+                sx.Vector2d(0, (self.mode_offset+.5)/self.steps),
+                sx.Vector2d(self.skew * self.stretch, (self.mode_offset+1.5)/self.steps),
+                sx.Vector2d(self.stretch, (self.mode_offset+.5)/self.steps)
+            )
+
+            # Calculate scale from MOS using implied affine transform
+            self.scale = sx.Scale.fromAffine(
+                onscreen_affine,
+                self.root_freq,
+                128,  # Max MIDI note
+                60  # MIDI root note
+            )
+
+            # Build dictionary from natural coordinate to scale index
+            self.coord_to_scale_index = {}
+            scale_nodes = self.scale.getNodes()
+            for index, node in enumerate(scale_nodes):
+                coord = (node.natural_coord.x, node.natural_coord.y)
+                self.coord_to_scale_index[coord] = index
+                print (f"Mapping coord {coord} to scale index {index}")
+
             logger.info(
                 f"MOS calculated: depth={self.depth}, mode={self.mode}, "
-                f"scale_system={self.L}L {self.s}s, {len(self.scale_degrees)} scale degrees"
+                f"scale_system={self.L}L {self.s}s, {len(self.scale_degrees)} scale degrees, "
+                f"{len(self.coord_to_scale_index)} mapped coordinates"
             )
+
+            # Output full scale coordinate -> index mapping
+            logger.info("Scale coordinate to index mapping:")
+            for coord, index in sorted(self.coord_to_scale_index.items(), key=lambda x: x[1]):
+                logger.info(f"  ({coord[0]:3d}, {coord[1]:3d}) -> index {index:3d}")
 
         except Exception as e:
             logger.error(f"Error calculating MOS: {e}")
             # Fallback to chromatic scale
             self.mos = None
+            self.scale = None
+            self.coord_to_scale_index = {}
             self.scale_degrees = list(range(self.steps))
             self.L, self.s = self.steps, 0
 

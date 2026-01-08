@@ -1,6 +1,5 @@
 DeviceName: Lumatone
 MIDIDeviceName: Lumatone MIDI
-virtualMIDIDeviceName: PitchGrid Lumatone
 isMPE: false
 hasGlobalPitchBend: true
 NumRows: 19

@@ -101,7 +101,8 @@ class IsomorphicLayout(LayoutCalculator):
         logical_coords: List[Tuple[int, int]],
         scale_degrees: List[int],
         scale_size: int,
-        mos: Optional[scalatrix.MOS] = None
+        mos: Optional[scalatrix.MOS] = None,
+        coord_to_scale_index: Optional[Dict[Tuple[int, int], int]] = None
     ) -> Dict[Tuple[int, int], int]:
         """
         Calculate isomorphic mapping using IntegerAffineTransform.
@@ -111,6 +112,7 @@ class IsomorphicLayout(LayoutCalculator):
             scale_degrees: List of scale degrees (chromatic for now)
             scale_size: Total EDO steps
             mos: Optional MOS object for advanced mapping
+            coord_to_scale_index: Optional mapping from MOS natural coordinate to scale index
 
         Returns:
             Dict mapping (logical_x, logical_y) -> MIDI note number
@@ -133,29 +135,40 @@ class IsomorphicLayout(LayoutCalculator):
                 # Apply inverse transform to get MOS natural coordinate
                 logical_vec = scalatrix.Vector2i(logical_x, logical_y)
                 mos_coord = inverse_transform.apply(logical_vec)
+                mos_coord_tuple = (mos_coord.x, mos_coord.y)
 
-                # Calculate MIDI note from MOS coordinate
-                # The MOS coordinate (x, y) maps to note = x + y * equave_steps
-                # For 12-EDO: note = (x + 12*y) mod 12 for the degree, plus octave offset
-                mos_x = mos_coord.x
-                mos_y = mos_coord.y
+                # If we have a coord_to_scale_index mapping, use it
+                if coord_to_scale_index is not None:
+                    if mos_coord_tuple in coord_to_scale_index:
+                        # This coordinate is in the scale - use its index as the MIDI note
+                        note = coord_to_scale_index[mos_coord_tuple]
 
-                # Calculate which octave we're in
-                # Assuming equave at 12 semitones
-                total_steps = mos_x + mos_y * scale_size
+                        # Clamp to MIDI range
+                        if 0 <= note <= 127:
+                            mapping[(logical_x, logical_y)] = note
+                else:
+                    # Fallback: old chromatic mapping logic
+                    # Calculate MIDI note from MOS coordinate
+                    # The MOS coordinate (x, y) maps to note = x + y * equave_steps
+                    mos_x = mos_coord.x
+                    mos_y = mos_coord.y
 
-                # Get the degree within the scale
-                degree = total_steps % scale_size
-                octave = total_steps // scale_size
+                    # Calculate which octave we're in
+                    # Assuming equave at 12 semitones
+                    total_steps = mos_x + mos_y * scale_size
 
-                # Map to MIDI note
-                if 0 <= degree < len(scale_degrees):
-                    base_note = scale_degrees[degree]
-                    note = base_note + octave * 12
+                    # Get the degree within the scale
+                    degree = total_steps % scale_size
+                    octave = total_steps // scale_size
 
-                    # Clamp to MIDI range
-                    if 0 <= note <= 127:
-                        mapping[(logical_x, logical_y)] = note
+                    # Map to MIDI note
+                    if 0 <= degree < len(scale_degrees):
+                        base_note = scale_degrees[degree]
+                        note = base_note + octave * 12
+
+                        # Clamp to MIDI range
+                        if 0 <= note <= 127:
+                            mapping[(logical_x, logical_y)] = note
 
             except Exception as e:
                 logger.debug(f"Failed to map coordinate ({logical_x}, {logical_y}): {e}")
