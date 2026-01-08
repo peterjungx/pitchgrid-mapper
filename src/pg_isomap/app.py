@@ -34,7 +34,11 @@ class PGIsomapApp:
         # Components
         self.controller_manager = ControllerManager(settings.controller_config_dir)
         self.midi_handler = MIDIHandler(settings.virtual_midi_device_name)
-        self.osc_handler = OSCHandler(settings.osc_listen_host, settings.osc_listen_port)
+        self.osc_handler = OSCHandler(
+            host=settings.osc_host,
+            server_port=settings.osc_server_port,
+            client_port=settings.osc_client_port
+        )
 
         # State
         self.current_controller: Optional[ControllerConfig] = None
@@ -294,6 +298,8 @@ class PGIsomapApp:
             'available_controllers': self.controller_manager.get_all_device_names(),
             'detected_controllers': detected_controllers,
             'controller_pads': controller_pads,
+            'osc_connected': self.osc_handler.is_connected(),
+            'osc_port': self.osc_handler.port,
             'midi_stats': {
                 'messages_processed': self.midi_handler.messages_processed,
                 'notes_remapped': self.midi_handler.notes_remapped,

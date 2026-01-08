@@ -18,11 +18,10 @@ class Settings(BaseSettings):
     virtual_midi_device_name: str = "PG Isomap"
     midi_buffer_size: int = 1024
 
-    # OSC
-    osc_listen_host: str = "127.0.0.1"
-    osc_listen_port: int = 9000
-    pitchgrid_osc_host: str = "127.0.0.1"
-    pitchgrid_osc_port: int = 8000
+    # OSC (bidirectional communication with PitchGrid plugin)
+    osc_host: str = "127.0.0.1"
+    osc_server_port: int = 34561  # Port we listen on (receive from plugin)
+    osc_client_port: int = 34562  # Port we send to (plugin listens here)
 
     # Controller Discovery
     discovery_interval_seconds: float = 3.0

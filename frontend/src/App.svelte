@@ -16,6 +16,8 @@
     available_controllers: string[];
     detected_controllers: string[];
     controller_pads: Pad[];
+    osc_connected: boolean;
+    osc_port: number;
     midi_stats: {
       messages_processed: number;
       notes_remapped: number;
@@ -25,6 +27,52 @@
   let ws: WebSocket | null = null;
   let status: AppStatus | null = null;
   let selectedController: string = '';
+
+  // Helper to check if controller is detected/available
+  function isControllerAvailable(controllerName: string): boolean {
+    if (!status) return false;
+    if (controllerName === 'Computer Keyboard') return true;
+    return status.detected_controllers.includes(controllerName);
+  }
+
+  // Handle controller selection from dropdown
+  async function handleControllerSelection(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    const controllerName = target.value;
+
+    if (!controllerName) return;
+
+    selectedController = controllerName;
+
+    // If it's Computer Keyboard, just switch to it (always available)
+    if (controllerName === 'Computer Keyboard') {
+      await switchToController(controllerName);
+      return;
+    }
+
+    // If it's a physical controller and it's available, connect to it
+    if (isControllerAvailable(controllerName)) {
+      await connectController(controllerName);
+    }
+  }
+
+  // Switch to a controller configuration (doesn't require MIDI connection)
+  async function switchToController(deviceName: string) {
+    try {
+      const response = await fetch('/api/controllers/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_name: deviceName }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        await fetchStatus();
+      }
+    } catch (error) {
+      console.error('Error switching controller:', error);
+    }
+  }
 
   // WebSocket connection
   function connectWebSocket() {
@@ -121,6 +169,11 @@
     fetchStatus();
   });
 
+  // Update selected controller when status changes
+  $: if (status && status.connected_controller) {
+    selectedController = status.connected_controller;
+  }
+
   onDestroy(() => {
     if (ws) {
       ws.close();
@@ -129,11 +182,33 @@
 </script>
 
 <main>
-  <h1>PitchGrid Isomap</h1>
 
   {#if status}
     <div class="card">
-      <h2>Controller Visualization</h2>
+      <div class="controller-selector">
+        <label for="controller-select">Controller:</label>
+        <select
+          id="controller-select"
+          value={selectedController}
+          on:change={handleControllerSelection}
+        >
+          {#each status.available_controllers as controller}
+            {@const available = isControllerAvailable(controller)}
+            <option value={controller}>
+              {controller}{available ? '' : ' (not connected)'}
+            </option>
+          {/each}
+        </select>
+        <div class="connection-indicators">
+          {#if status.connected_controller && status.connected_controller !== 'Computer Keyboard'}
+            <span class="connected-indicator midi-connected">● MIDI Connected</span>
+          {/if}
+          <span class="connected-indicator osc-indicator" class:osc-connected={status.osc_connected}>
+            ● OSC {status.osc_connected ? 'Connected' : 'Disconnected'} (:{status.osc_port})
+          </span>
+        </div>
+      </div>
+
       {#if status.controller_pads.length > 0}
         <ControllerCanvas
           pads={status.controller_pads}
@@ -142,28 +217,6 @@
         />
       {:else}
         <p>No controller loaded</p>
-      {/if}
-    </div>
-
-    <div class="card">
-      <h2>Controller Connection</h2>
-
-      {#if status.connected_controller && status.connected_controller !== 'Computer Keyboard'}
-        <p>Connected to: <strong>{status.connected_controller}</strong></p>
-        <button on:click={disconnectController}>Disconnect</button>
-      {:else}
-        {#if status.detected_controllers.length > 0}
-          <p>Detected controllers:</p>
-          {#each status.detected_controllers as controller}
-            <div class="detected-controller">
-              <span>{controller} detected.</span>
-              <button on:click={() => connectController(controller)}>Connect</button>
-            </div>
-          {/each}
-        {:else}
-          <p>No physical controllers detected.</p>
-        {/if}
-        <p class="info-text">Using Computer Keyboard layout by default.</p>
       {/if}
     </div>
 
@@ -190,25 +243,59 @@
     width: 100%;
   }
 
-  h1 {
-    color: #646cff;
-    margin-bottom: 1em;
-  }
-
   h2 {
     font-size: 1.5em;
     margin-top: 0;
     margin-bottom: 0.5em;
   }
 
+  .controller-selector {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    margin-bottom: 1em;
+    flex-wrap: wrap;
+  }
+
+  .controller-selector label {
+    font-weight: 500;
+  }
+
   select {
     padding: 0.5em;
-    margin-right: 0.5em;
     border-radius: 4px;
     border: 1px solid #444;
     background-color: #1a1a1a;
     color: #d4d4d4;
     font-size: 1em;
+    min-width: 200px;
+  }
+
+  .connection-indicators {
+    display: flex;
+    gap: 1em;
+    align-items: center;
+  }
+
+  .connected-indicator {
+    font-size: 0.85em;
+    padding: 0.25em 0.5em;
+    border-radius: 4px;
+  }
+
+  .midi-connected {
+    color: #54cec2;
+    background-color: rgba(84, 206, 194, 0.1);
+  }
+
+  .osc-indicator {
+    color: #888;
+    background-color: rgba(136, 136, 136, 0.1);
+  }
+
+  .osc-indicator.osc-connected {
+    color: #54cec2;
+    background-color: rgba(84, 206, 194, 0.1);
   }
 
   button:disabled {

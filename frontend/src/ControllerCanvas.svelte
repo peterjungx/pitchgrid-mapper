@@ -59,6 +59,7 @@
 </script>
 
 <div class="canvas-container" bind:this={containerElement}>
+
   <svg
     width={containerWidth}
     height={containerHeight}
@@ -77,9 +78,6 @@
       />
     {/each}
   </svg>
-  {#if deviceName}
-    <div class="device-label">{deviceName}</div>
-  {/if}
 </div>
 
 <style>
@@ -96,7 +94,6 @@
   }
 
   .device-label {
-    position: absolute;
     top: 1.5em;
     left: 1.5em;
     color: #54cec2;

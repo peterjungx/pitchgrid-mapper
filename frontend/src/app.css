@@ -26,9 +26,7 @@ body {
 }
 
 #app {
-  max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem;
   width: 100%;
 }
 
@@ -59,7 +57,7 @@ button:focus-visible {
 }
 
 .card {
-  padding: 2em;
+  padding: 1em;
   background-color: #1a1a1a;
   border-radius: 8px;
   margin-bottom: 1em;

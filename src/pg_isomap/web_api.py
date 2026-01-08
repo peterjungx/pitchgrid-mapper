@@ -87,6 +87,29 @@ class WebAPI:
             self.app.disconnect_controller()
             return {'success': True}
 
+        @self.fastapi.post("/api/controllers/switch")
+        async def switch_controller(request: ConnectControllerRequest):
+            """
+            Switch to a controller configuration without requiring MIDI connection.
+
+            This loads the controller's pad layout and geometry, but doesn't
+            establish a MIDI connection. Useful for Computer Keyboard and for
+            visualizing controllers that aren't physically connected.
+            """
+            config = self.app.controller_manager.get_config(request.device_name)
+            if not config:
+                return {'success': False, 'error': f'Controller config not found: {request.device_name}'}
+
+            # Disconnect from any existing MIDI controller
+            self.app.midi_handler.disconnect_controller()
+
+            # Load the configuration
+            self.app.current_controller = config
+            self.app._recalculate_layout()
+
+            logger.info(f"Switched to controller configuration: {request.device_name}")
+            return {'success': True}
+
         @self.fastapi.get("/api/layout")
         async def get_layout():
             """Get current layout configuration."""
