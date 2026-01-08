@@ -44,6 +44,9 @@ class WebAPI:
         self.app = app
         self.fastapi = FastAPI(title="PG Isomap API", version=settings.version)
 
+        # Set reference back to app so it can broadcast updates
+        self.app.web_api = self
+
         # CORS middleware
         self.fastapi.add_middleware(
             CORSMiddleware,
@@ -55,6 +58,9 @@ class WebAPI:
 
         # WebSocket connections
         self.active_connections: list[WebSocket] = []
+
+        # Event loop reference (set when FastAPI starts)
+        self.event_loop = None
 
         # Register routes
         self._register_routes()
@@ -105,6 +111,11 @@ class WebAPI:
 
             # Load the configuration
             self.app.current_controller = config
+
+            # Reset layout calculator to default when changing controllers
+            self.app.current_layout_calculator = None
+
+            # Recalculate layout with fresh calculator
             self.app._recalculate_layout()
 
             logger.info(f"Switched to controller configuration: {request.device_name}")
@@ -154,6 +165,12 @@ class WebAPI:
         @self.fastapi.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """WebSocket endpoint for real-time updates."""
+            import asyncio
+
+            # Store event loop reference on first WebSocket connection
+            if self.event_loop is None:
+                self.event_loop = asyncio.get_event_loop()
+
             await websocket.accept()
             self.active_connections.append(websocket)
 
@@ -167,8 +184,29 @@ class WebAPI:
                 # Keep connection alive and receive messages
                 while True:
                     data = await websocket.receive_text()
-                    # Handle client messages if needed
                     logger.debug(f"Received WebSocket message: {data}")
+
+                    # Parse and handle client messages
+                    try:
+                        import json
+                        message = json.loads(data)
+                        message_type = message.get('type')
+
+                        if message_type == 'apply_transformation':
+                            # Handle transformation request
+                            transformation = message.get('transformation')
+                            if transformation:
+                                success = self.app.apply_transformation(transformation)
+                                if success:
+                                    # Broadcast updated status to all clients
+                                    await self._broadcast({
+                                        'type': 'status_update',
+                                        'status': self.app.get_status()
+                                    })
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in WebSocket message: {data}")
+                    except Exception as e:
+                        logger.error(f"Error handling WebSocket message: {e}")
 
             except WebSocketDisconnect:
                 self.active_connections.remove(websocket)
@@ -201,3 +239,41 @@ class WebAPI:
         # Remove disconnected clients
         for connection in disconnected:
             self.active_connections.remove(connection)
+
+    def broadcast_status_update(self):
+        """
+        Broadcast current status to all WebSocket clients.
+
+        This is a synchronous wrapper that schedules the broadcast
+        to be executed in the event loop from any thread.
+        """
+        import asyncio
+
+        if not self.active_connections or self.event_loop is None:
+            return
+
+        message = {
+            'type': 'status_update',
+            'status': self.app.get_status()
+        }
+
+        # Schedule the broadcast in the event loop
+        async def send_to_all():
+            disconnected = []
+            for connection in self.active_connections[:]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Error broadcasting to WebSocket: {e}")
+                    disconnected.append(connection)
+
+            # Remove disconnected clients
+            for connection in disconnected:
+                if connection in self.active_connections:
+                    self.active_connections.remove(connection)
+
+        # Use run_coroutine_threadsafe to schedule from another thread
+        try:
+            asyncio.run_coroutine_threadsafe(send_to_all(), self.event_loop)
+        except Exception as e:
+            logger.error(f"Error scheduling WebSocket broadcast: {e}")

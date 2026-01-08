@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from .coloring import DEFAULT_COLORING_SCHEME
 from .config import settings
 from .controller_config import ControllerConfig, ControllerManager
 from .layouts import (
@@ -23,6 +24,7 @@ from .layouts import (
 )
 from .midi_handler import MIDIHandler
 from .osc_handler import OSCHandler
+from .tuning import TuningHandler
 
 logger = logging.getLogger(__name__)
 
@@ -39,23 +41,24 @@ class PGIsomapApp:
             server_port=settings.osc_server_port,
             client_port=settings.osc_client_port
         )
+        self.tuning_handler = TuningHandler()
 
         # State
         self.current_controller: Optional[ControllerConfig] = None
         self.current_layout_config: LayoutConfig = LayoutConfig(layout_type=LayoutType.ISOMORPHIC)
         self.current_layout_calculator: Optional[LayoutCalculator] = None
 
+        # WebAPI reference (set by WebAPI after initialization)
+        self.web_api = None
+
         # Discovery thread
         self._discovery_thread: Optional[threading.Thread] = None
         self._discovery_running = False
 
-        # Current scale data from PitchGrid
-        self.current_scale_degrees: list[int] = []
-        self.current_scale_size: int = 12
-
         # Setup callbacks
         self.osc_handler.on_scale_update = self._handle_scale_update
         self.osc_handler.on_note_mapping = self._handle_note_mapping
+        self.osc_handler.on_connection_changed = self._handle_osc_connection_changed
 
     def start(self):
         """Start the application."""
@@ -119,10 +122,10 @@ class PGIsomapApp:
         """Periodically scan for controllers."""
         while self._discovery_running:
             try:
-                available_ports = self.midi_handler.get_available_controllers()
-                # This can be used to update UI with available controllers
-                # For now, just log
-                logger.debug(f"Available MIDI ports: {available_ports}")
+                # Scan for available controllers
+                # Available ports can be queried via get_available_controllers()
+                # when needed by the UI
+                self.midi_handler.get_available_controllers()
 
             except Exception as e:
                 logger.error(f"Error in discovery loop: {e}")
@@ -160,6 +163,9 @@ class PGIsomapApp:
         # Update current controller
         self.current_controller = config
 
+        # Reset layout calculator to default when changing controllers
+        self.current_layout_calculator = None
+
         # Recalculate layout
         self._recalculate_layout()
 
@@ -177,31 +183,78 @@ class PGIsomapApp:
         self.current_layout_config = config
         self._recalculate_layout()
 
+    def apply_transformation(self, transformation_type: str) -> bool:
+        """
+        Apply a transformation to the current layout.
+
+        Args:
+            transformation_type: Transformation to apply (e.g., 'shift_left', 'rotate_right')
+
+        Returns:
+            True if transformation was applied successfully
+        """
+        if not self.current_layout_calculator:
+            logger.warning("No layout calculator available")
+            return False
+
+        # Check if the layout calculator supports transformations
+        if not hasattr(self.current_layout_calculator, 'apply_transformation'):
+            logger.warning(f"Layout type {self.current_layout_config.layout_type} does not support transformations")
+            return False
+
+        try:
+            # Apply the transformation
+            self.current_layout_calculator.apply_transformation(transformation_type)
+
+            # Recalculate the layout with the new transform
+            self._recalculate_layout()
+
+            logger.info(f"Applied transformation: {transformation_type}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error applying transformation {transformation_type}: {e}")
+            return False
+
     def _recalculate_layout(self):
         """Recalculate layout mapping and update MIDI handler."""
         if not self.current_controller:
             logger.warning("No controller loaded, cannot calculate layout")
             return
 
-        # Create layout calculator
-        if self.current_layout_config.layout_type == LayoutType.ISOMORPHIC:
-            self.current_layout_calculator = IsomorphicLayout(self.current_layout_config)
-        elif self.current_layout_config.layout_type == LayoutType.STRING_LIKE:
-            self.current_layout_calculator = StringLikeLayout(self.current_layout_config)
-        elif self.current_layout_config.layout_type == LayoutType.PIANO_LIKE:
-            self.current_layout_calculator = PianoLikeLayout(self.current_layout_config)
-        else:
-            logger.error(f"Unsupported layout type: {self.current_layout_config.layout_type}")
-            return
+        # Create layout calculator only if we don't have one or if the type changed
+        needs_new_calculator = (
+            self.current_layout_calculator is None or
+            (self.current_layout_config.layout_type == LayoutType.ISOMORPHIC and not isinstance(self.current_layout_calculator, IsomorphicLayout)) or
+            (self.current_layout_config.layout_type == LayoutType.STRING_LIKE and not isinstance(self.current_layout_calculator, StringLikeLayout)) or
+            (self.current_layout_config.layout_type == LayoutType.PIANO_LIKE and not isinstance(self.current_layout_calculator, PianoLikeLayout))
+        )
+
+        if needs_new_calculator:
+            if self.current_layout_config.layout_type == LayoutType.ISOMORPHIC:
+                # Pass default root coordinate from controller config
+                default_root = self.current_controller.default_iso_root_coordinate
+                self.current_layout_calculator = IsomorphicLayout(
+                    self.current_layout_config,
+                    default_root=default_root
+                )
+            elif self.current_layout_config.layout_type == LayoutType.STRING_LIKE:
+                self.current_layout_calculator = StringLikeLayout(self.current_layout_config)
+            elif self.current_layout_config.layout_type == LayoutType.PIANO_LIKE:
+                self.current_layout_calculator = PianoLikeLayout(self.current_layout_config)
+            else:
+                logger.error(f"Unsupported layout type: {self.current_layout_config.layout_type}")
+                return
 
         # Get logical coordinates from controller
         logical_coords = self.current_controller.get_logical_coordinates()
 
-        # Calculate mapping
+        # Calculate mapping using scale degrees from tuning handler
         mapping = self.current_layout_calculator.calculate_mapping(
             logical_coords,
-            self.current_scale_degrees,
-            self.current_scale_size
+            self.tuning_handler.scale_degrees,
+            self.tuning_handler.steps,
+            mos=self.tuning_handler.mos
         )
 
         # Build reverse mapping (controller_note -> logical_coord)
@@ -221,6 +274,10 @@ class PGIsomapApp:
             f"Layout recalculated: {len(mapping)} mapped pads, "
             f"{len(reverse_mapping)} reverse mappings"
         )
+
+        # Broadcast updated status to WebSocket clients
+        if self.web_api:
+            self.web_api.broadcast_status_update()
 
     def _logical_to_controller_note(self, logical_x: int, logical_y: int) -> Optional[int]:
         """
@@ -244,17 +301,35 @@ class PGIsomapApp:
         return None
 
     def _handle_scale_update(self, scale_data: dict):
-        """Handle scale update from PitchGrid plugin."""
-        logger.info("Received scale update from PitchGrid")
+        """Handle scale/tuning update from PitchGrid plugin."""
+        logger.info("Received scale/tuning update from PitchGrid")
 
-        # Parse scale data
-        # TODO: Implement based on actual PitchGrid OSC format
-        # For now, use a default scale
-        self.current_scale_degrees = list(range(60, 72))  # C major placeholder
-        self.current_scale_size = 12
+        # Check if this is tuning data from /pitchgrid/plugin/tuning
+        args = scale_data.get('args', [])
 
-        # Recalculate layout
-        self._recalculate_layout()
+        if len(args) >= 7:
+            # Parse tuning data: (depth, mode, root_freq, stretch, skew, mode_offset, steps)
+            try:
+                depth, mode, root_freq, stretch, skew, mode_offset, steps = args[:7]
+
+                # Update tuning handler
+                self.tuning_handler.update_tuning(
+                    depth=depth,
+                    mode=mode,
+                    root_freq=root_freq,
+                    stretch=stretch,
+                    skew=skew,
+                    mode_offset=mode_offset,
+                    steps=steps
+                )
+
+                # Recalculate layout with new scale degrees
+                self._recalculate_layout()
+
+            except Exception as e:
+                logger.error(f"Error processing tuning data: {e}")
+        else:
+            logger.warning(f"Unexpected scale data format: {args}")
 
     def _handle_note_mapping(self, mapping_data: dict):
         """Handle note mapping update from PitchGrid plugin."""
@@ -262,6 +337,14 @@ class PGIsomapApp:
 
         # Parse and apply note mapping
         # TODO: Implement based on actual PitchGrid OSC format
+
+    def _handle_osc_connection_changed(self, connected: bool):
+        """Handle OSC connection state change."""
+        logger.info(f"OSC connection state changed: {'connected' if connected else 'disconnected'}")
+
+        # Broadcast updated status to WebSocket clients
+        if self.web_api:
+            self.web_api.broadcast_status_update()
 
     def get_status(self) -> dict:
         """Get current application status."""
@@ -277,19 +360,43 @@ class PGIsomapApp:
                         detected_controllers.append(config_name)
                         break
 
-        # Get controller pads for visualization
+        # Get controller pads for visualization with note mapping and colors
         controller_pads = []
         if self.current_controller:
-            controller_pads = [
-                {
+            for x, y, px, py in self.current_controller.pads:
+                coord = (x, y)
+                # Get mapped note if available
+                mapped_note = self.midi_handler.note_mapping.get(coord)
+
+                # Calculate MOS coordinate and color based on scale system
+                mos_coord = None
+                color = None
+
+                if self.current_layout_calculator and hasattr(self.current_layout_calculator, 'get_mos_coordinate'):
+                    # Get MOS coordinate for this pad
+                    mos_coord = self.current_layout_calculator.get_mos_coordinate(x, y)
+
+                    # Use coloring scheme to determine color
+                    color = DEFAULT_COLORING_SCHEME.get_color(
+                        mos_coord=mos_coord,
+                        mos=self.tuning_handler.mos,
+                        steps=self.tuning_handler.steps
+                    )
+                elif mapped_note is not None:
+                    # Fallback: simple hue based on note number
+                    hue = (mapped_note * 30) % 360
+                    color = f"hsl({hue}, 70%, 60%)"
+
+                controller_pads.append({
                     'x': x,
                     'y': y,
                     'phys_x': px,
                     'phys_y': py,
-                    'shape': self.current_controller.pad_shapes.get((x, y), [])
-                }
-                for x, y, px, py in self.current_controller.pads
-            ]
+                    'shape': self.current_controller.pad_shapes.get((x, y), []),
+                    'note': mapped_note,
+                    'color': color,
+                    'mos_coord': mos_coord,
+                })
 
         return {
             'connected_controller': self.current_controller.device_name if self.current_controller else None,
@@ -300,6 +407,7 @@ class PGIsomapApp:
             'controller_pads': controller_pads,
             'osc_connected': self.osc_handler.is_connected(),
             'osc_port': self.osc_handler.port,
+            'tuning': self.tuning_handler.get_tuning_info(),
             'midi_stats': {
                 'messages_processed': self.midi_handler.messages_processed,
                 'notes_remapped': self.midi_handler.notes_remapped,

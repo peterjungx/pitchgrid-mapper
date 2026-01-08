@@ -143,7 +143,6 @@ class OSCHandler:
             try:
                 if self._client:
                     self._client.send_message("/pitchgrid/heartbeat", 1)
-                    logger.debug("Sent heartbeat to plugin")
             except Exception as e:
                 logger.error(f"Error sending heartbeat: {e}")
 
@@ -175,7 +174,6 @@ class OSCHandler:
 
     def _handle_heartbeat_ack(self, address: str, *args):
         """Handle heartbeat acknowledgment from plugin."""
-        logger.debug(f"Received heartbeat ack: {args}")
         self._last_ack_time = time.time()
 
     def _handle_tuning(self, address: str, *args):

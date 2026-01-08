@@ -8,6 +8,8 @@
     phys_x: number;
     phys_y: number;
     shape: Array<[number, number]>;
+    note?: number;
+    color?: string;
   }
 
   export let pads: PadShape[] = [];
@@ -73,6 +75,7 @@
         phys_x={pad.phys_x}
         phys_y={pad.phys_y}
         shape={pad.shape}
+        color={pad.color}
         isActive={false}
         onClick={() => onPadClick(pad.x, pad.y)}
       />

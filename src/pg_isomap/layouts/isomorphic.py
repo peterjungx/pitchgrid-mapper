@@ -1,7 +1,9 @@
-"""Isomorphic layout calculator."""
+"""Isomorphic layout calculator with IntegerAffineTransform support."""
 
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+import scalatrix
 
 from .base import LayoutCalculator, LayoutConfig
 
@@ -13,64 +15,151 @@ class IsomorphicLayout(LayoutCalculator):
     Fully isomorphic layout calculator.
 
     In an isomorphic layout:
+    - MOS natural coordinates are mapped to logical coordinates via an integer affine transform
+    - The mapping transform can be manipulated via shift/skew/rotate/reflect operations
     - Moving in one direction always changes pitch by the same interval
     - The pattern repeats uniformly across the surface
-    - All scale patterns look identical regardless of position
     """
+
+    def __init__(self, config: LayoutConfig, default_root: Optional[Tuple[int, int]] = None):
+        """
+        Initialize isomorphic layout with an integer affine transform.
+
+        Args:
+            config: Layout configuration
+            default_root: Default root coordinate from controller config (tx, ty for offset)
+        """
+        super().__init__(config)
+
+        # Initialize mapping transform
+        # Matrix: ((1, 0), (0, 1)) = identity
+        # Offset: default_root or (0, 0)
+        root_x, root_y = default_root if default_root else (0, 0)
+
+        self.mapping_transform = scalatrix.IntegerAffineTransform(
+            1, 0,   # First row: a, b
+            0, 1,   # Second row: c, d
+            root_x, root_y  # Offset: tx, ty
+        )
+
+    def set_transform(self, transform: scalatrix.IntegerAffineTransform):
+        """Set the mapping transform directly."""
+        self.mapping_transform = transform
+
+    def apply_transformation(self, transform_type: str) -> scalatrix.IntegerAffineTransform:
+        """
+        Apply a transformation to the mapping transform.
+
+        Args:
+            transform_type: One of 'shift_left', 'shift_right', 'shift_up', 'shift_down',
+                          'skew_left', 'skew_right', 'rotate_left', 'rotate_right',
+                          'reflect_horizontal', 'reflect_vertical'
+
+        Returns:
+            The new mapping transform after applying the transformation
+        """
+        # Create transformation matrices/offsets
+        if transform_type == 'shift_left':
+            delta = scalatrix.IntegerAffineTransform(1, 0, 0, 1, -1, 0)
+        elif transform_type == 'shift_right':
+            delta = scalatrix.IntegerAffineTransform(1, 0, 0, 1, 1, 0)
+        elif transform_type == 'shift_up':
+            delta = scalatrix.IntegerAffineTransform(1, 0, 0, 1, 0, 1)
+        elif transform_type == 'shift_down':
+            delta = scalatrix.IntegerAffineTransform(1, 0, 0, 1, 0, -1)
+        elif transform_type == 'skew_left':
+            # Shear matrix: [[1, -1], [0, 1]]
+            delta = scalatrix.IntegerAffineTransform(1, -1, 0, 1, 0, 0)
+        elif transform_type == 'skew_right':
+            # Shear matrix: [[1, 1], [0, 1]]
+            delta = scalatrix.IntegerAffineTransform(1, 1, 0, 1, 0, 0)
+        elif transform_type == 'rotate_left':
+            # 90° counter-clockwise: [[0, -1], [1, 0]]
+            delta = scalatrix.IntegerAffineTransform(0, -1, 1, 0, 0, 0)
+        elif transform_type == 'rotate_right':
+            # 90° clockwise: [[0, 1], [-1, 0]]
+            delta = scalatrix.IntegerAffineTransform(0, 1, -1, 0, 0, 0)
+        elif transform_type == 'reflect_horizontal':
+            # Mirror on Y-axis: [[-1, 0], [0, 1]]
+            delta = scalatrix.IntegerAffineTransform(-1, 0, 0, 1, 0, 0)
+        elif transform_type == 'reflect_vertical':
+            # Mirror on X-axis: [[1, 0], [0, -1]]
+            delta = scalatrix.IntegerAffineTransform(1, 0, 0, -1, 0, 0)
+        else:
+            logger.warning(f"Unknown transformation type: {transform_type}")
+            return self.mapping_transform
+
+        # Apply transformation by composing with delta
+        M = self.mapping_transform
+        M_trans = scalatrix.IntegerAffineTransform(1, 0, 0, 1, M.tx, M.ty)
+        M_mat = scalatrix.IntegerAffineTransform(M.a, M.b, M.c, M.d, 0, 0)
+        self.mapping_transform = M_trans.applyAffine(delta.applyAffine(M_mat))
+        return self.mapping_transform
 
     def calculate_mapping(
         self,
         logical_coords: List[Tuple[int, int]],
         scale_degrees: List[int],
-        scale_size: int
+        scale_size: int,
+        mos: Optional[scalatrix.MOS] = None
     ) -> Dict[Tuple[int, int], int]:
         """
-        Calculate isomorphic mapping.
+        Calculate isomorphic mapping using IntegerAffineTransform.
 
-        The basic isomorphic mapping assigns notes based on:
-        - X-axis: typically moves by one scale step
-        - Y-axis: typically moves by a generator interval (e.g., perfect fifth)
+        Args:
+            logical_coords: List of available (logical_x, logical_y) coordinates
+            scale_degrees: List of scale degrees (chromatic for now)
+            scale_size: Total EDO steps
+            mos: Optional MOS object for advanced mapping
 
-        TODO: This is a placeholder. The actual implementation will need to:
-        1. Apply transformations (skew, rotate, flip) from config
-        2. Use scalatrix library to determine proper intervals
-        3. Handle different controller geometries (quad vs hex)
+        Returns:
+            Dict mapping (logical_x, logical_y) -> MIDI note number
         """
         mapping = {}
 
         if not scale_degrees:
             return mapping
 
-        # Simple placeholder: linear mapping
-        # In real implementation, this should use scalatrix scale structure
-        root_note = scale_degrees[0] if scale_degrees else 60
+        # Get the inverse transform to map logical -> MOS coordinates
+        try:
+            inverse_transform = self.mapping_transform.inverse()
+        except Exception as e:
+            logger.error(f"Failed to invert mapping transform: {e}")
+            return mapping
 
+        # For each logical coordinate, calculate its MOS coordinate
         for logical_x, logical_y in logical_coords:
-            # Apply root offset
-            dx = logical_x - self.config.root_x
-            dy = logical_y - self.config.root_y
+            try:
+                # Apply inverse transform to get MOS natural coordinate
+                logical_vec = scalatrix.Vector2i(logical_x, logical_y)
+                mos_coord = inverse_transform.apply(logical_vec)
 
-            # Apply movement
-            dx -= self.config.move_x
-            dy -= self.config.move_y
+                # Calculate MIDI note from MOS coordinate
+                # The MOS coordinate (x, y) maps to note = x + y * equave_steps
+                # For 12-EDO: note = (x + 12*y) mod 12 for the degree, plus octave offset
+                mos_x = mos_coord.x
+                mos_y = mos_coord.y
 
-            # Simple isomorphic formula (placeholder)
-            # X-axis: move by 1 scale step
-            # Y-axis: move by 7 semitones (perfect fifth)
-            scale_index = dx % scale_size
-            octave_offset = (dx // scale_size) * 12
-            fifth_offset = dy * 7
+                # Calculate which octave we're in
+                # Assuming equave at 12 semitones
+                total_steps = mos_x + mos_y * scale_size
 
-            note = root_note + octave_offset + fifth_offset
+                # Get the degree within the scale
+                degree = total_steps % scale_size
+                octave = total_steps // scale_size
 
-            # Get the actual scale degree
-            if 0 <= scale_index < len(scale_degrees):
-                base_note = scale_degrees[scale_index]
-                note = base_note + (dx // scale_size) * 12 + dy * 7
+                # Map to MIDI note
+                if 0 <= degree < len(scale_degrees):
+                    base_note = scale_degrees[degree]
+                    note = base_note + octave * 12
 
-            # Clamp to MIDI range
-            if 0 <= note <= 127:
-                mapping[(logical_x, logical_y)] = note
+                    # Clamp to MIDI range
+                    if 0 <= note <= 127:
+                        mapping[(logical_x, logical_y)] = note
+
+            except Exception as e:
+                logger.debug(f"Failed to map coordinate ({logical_x}, {logical_y}): {e}")
+                continue
 
         logger.info(f"Isomorphic layout calculated: {len(mapping)} mapped pads")
         return mapping
@@ -80,6 +169,25 @@ class IsomorphicLayout(LayoutCalculator):
         logical_coords: List[Tuple[int, int]]
     ) -> List[Tuple[int, int]]:
         """Get unmapped coordinates (those outside MIDI range)."""
-        # For now, return empty list
-        # Real implementation would check which coords produce notes outside 0-127
+        # TODO: Calculate which coords produce notes outside 0-127
         return []
+
+    def get_mos_coordinate(self, logical_x: int, logical_y: int) -> Tuple[int, int]:
+        """
+        Get the MOS natural coordinate for a logical coordinate.
+
+        Args:
+            logical_x: Logical X coordinate
+            logical_y: Logical Y coordinate
+
+        Returns:
+            Tuple of (mos_x, mos_y) natural coordinates
+        """
+        try:
+            inverse_transform = self.mapping_transform.inverse()
+            logical_vec = scalatrix.Vector2i(logical_x, logical_y)
+            mos_coord = inverse_transform.apply(logical_vec)
+            return (mos_coord.x, mos_coord.y)
+        except Exception as e:
+            logger.error(f"Failed to get MOS coordinate: {e}")
+            return (0, 0)

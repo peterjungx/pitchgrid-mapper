@@ -14,4 +14,5 @@ ySpacing: 18.0
 SetUserMode: "240 0 32 41 2 13 0 6 247"
 keyIndex: "11 + x//8 + y"
 SetPadColorsBulk: "240 0 32 41 2 13 0 {#for pad in pads} 3 keyIndex(pad.x, pad.y) pad.red pad.green pad.blue {#end} 247"
+noteAssign: "cumulativeIndex(x, y)"
 defaultIsoRootCoordinate: [1,3]

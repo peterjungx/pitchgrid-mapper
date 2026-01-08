@@ -52,7 +52,7 @@ So No VST, but a separate executable.
 	- Harmony based HLC/HLS (only available if controller supports RGB)
 		- root white
 		- Look at sensory dissonance curve. brightness = sensory consonance
-		- different limits 3,5,7,9 in different colors
+		- different limits 2,3,5,7,11 in different colors
 		- opposite color for inverse (i.e. P5 has opposite color from P4)
 		- This will be killer for finding cool tunings.
 

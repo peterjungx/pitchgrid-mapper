@@ -16,5 +16,5 @@ fixedLabels:
   - ["A","S","D","F","G","H","J","K","L",";","'"]
   - ["Q","W","E","R","T","Y","U","I","O","P","[","]","\\"]
   - ["1","2","3","4","5","6","7","8","9","0","_","="]
-keyIndex: "30 + cumulativeIndex(x, y)"
+noteAssign: "30 + cumulativeIndex(x, y)"
 defaultIsoRootCoordinate: [0,0]
