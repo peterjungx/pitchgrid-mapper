@@ -14,7 +14,8 @@
 
   export let pads: PadShape[] = [];
   export let deviceName: string = '';
-  export let onPadClick: (x: number, y: number) => void = (x, y) => {console.log('Pad clicked', x, y);};
+  export let onPadNoteOn: (x: number, y: number) => void = (x, y) => {console.log('Pad note on', x, y);};
+  export let onPadNoteOff: (x: number, y: number) => void = (x, y) => {console.log('Pad note off', x, y);};
 
   let containerWidth: number = 800;
   let containerHeight: number = 600;
@@ -77,7 +78,8 @@
         shape={pad.shape}
         color={pad.color}
         isActive={false}
-        onClick={() => onPadClick(pad.x, pad.y)}
+        onNoteOn={() => onPadNoteOn(pad.x, pad.y)}
+        onNoteOff={() => onPadNoteOff(pad.x, pad.y)}
       />
     {/each}
   </svg>

@@ -5,9 +5,9 @@ Provides different coloring strategies based on the pad's role in the MOS scale.
 """
 
 import logging
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
-import scalatrix
+import scalatrix as sx
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class ColoringScheme:
     def get_color(
         self,
         mos_coord: Tuple[int, int],
-        mos: Optional[scalatrix.MOS],
+        mos: Optional[sx.MOS],
         steps: int
     ) -> Optional[str]:
         """
@@ -49,7 +49,11 @@ class ScaleColoringScheme(ColoringScheme):
         self,
         root_color: str = "hsl(300, 70%, 60%)",      # Magenta
         onscale_color: str = "hsl(180, 70%, 50%)",   # Cyan
-        offscale_color: str = "hsl(0, 0%, 40%)"      # Gray
+        onsuperscale_color: str = "hsl(120, 70%, 50%)", # Green
+        offscale_color: str = "hsl(0, 0%, 50%)",      # Gray
+        onscale_color_unmapped: str = "hsl(270, 70%, 30%)",   # Cyan muted (darker)
+        onsuperscale_color_unmapped: str = "hsl(120, 70%, 30%)", # Green muted (darker)
+        offscale_color_unmapped: str = "hsl(0, 0%, 40%)"      # Gray muted (darker)
     ):
         """
         Initialize scale coloring scheme.
@@ -57,52 +61,57 @@ class ScaleColoringScheme(ColoringScheme):
         Args:
             root_color: Color for root note
             onscale_color: Color for notes in the scale
+            onsuperscale_color: Color for notes in the superscale   
             offscale_color: Color for notes outside the scale
+            onscale_color_unmapped: Color for unmapped notes in the scale
+            onsuperscale_color_unmapped: Color for unmapped notes in the superscale
+            offscale_color_unmapped: Color for unmapped notes outside the scale
         """
         self.root_color = root_color
         self.onscale_color = onscale_color
+        self.onsuperscale_color = onsuperscale_color
         self.offscale_color = offscale_color
+        self.onscale_color_unmapped = onscale_color_unmapped
+        self.onsuperscale_color_unmapped = onsuperscale_color_unmapped
+        self.offscale_color_unmapped = offscale_color_unmapped
 
     def get_color(
         self,
         mos_coord: Tuple[int, int],
-        mos: Optional[scalatrix.MOS],
-        steps: int
+        mos: sx.MOS,
+        coord_to_scale_index: Dict[Tuple[int, int], int],
+        supermos: Optional[sx.MOS] = None
     ) -> Optional[str]:
         """
-        Get color based on scale role.
-
-        Logic adapted from pg_linn_companion:
-        - Root is the first node in MOS base scale
-        - On-scale means the coordinate matches a node in the base scale
-        - Off-scale means it doesn't match any node
+        Get color based on scale role and mapping.
         """
-        if not mos:
-            # No MOS available, use offscale color
-            return self.offscale_color
 
         try:
-            # Get MOS base scale nodes
-            mos_nodes = mos.base_scale.getNodes()
-
-            if not mos_nodes:
-                return self.offscale_color
-
-            # Create scalatrix Vector2i for comparison
-            coord_vec = scalatrix.Vector2i(mos_coord[0], mos_coord[1])
-
-            # Check if this is the root (first node in MOS)
-            root_coord = mos_nodes[0].natural_coord
-            if coord_vec.x == root_coord.x and coord_vec.y == root_coord.y:
+            d = mos_coord[0] * mos.b - mos_coord[1] * mos.a + mos.mode
+            is_root = d == mos.mode
+            if is_root: 
                 return self.root_color
-
-            # Check if this coordinate is in the scale
-            for node in mos_nodes:
-                if coord_vec.x == node.natural_coord.x and coord_vec.y == node.natural_coord.y:
+            
+            is_in_scale = d >= 0 and d < mos.n0
+            if is_in_scale: 
+                if mos_coord in coord_to_scale_index:
                     return self.onscale_color
-
-            # Not in scale
-            return self.offscale_color
+                else:
+                    return self.onscale_color_unmapped
+            
+            if supermos:
+                d_super = mos_coord[0] * supermos.b - mos_coord[1] * supermos.a + supermos.mode
+                is_in_supermos = d_super >= 0 and d_super < supermos.n0
+                if is_in_supermos:
+                    if mos_coord in coord_to_scale_index:
+                        return self.onsuperscale_color
+                    else:
+                        return self.onsuperscale_color_unmapped
+                    
+            if mos_coord in coord_to_scale_index:
+                return self.offscale_color
+            
+            return self.offscale_color_unmapped
 
         except Exception as e:
             logger.error(f"Error determining scale role for {mos_coord}: {e}")

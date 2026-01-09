@@ -425,7 +425,8 @@ class PGIsomapApp:
                     color = DEFAULT_COLORING_SCHEME.get_color(
                         mos_coord=mos_coord,
                         mos=self.tuning_handler.mos,
-                        steps=self.tuning_handler.steps
+                        coord_to_scale_index=self.tuning_handler.coord_to_scale_index,
+                        supermos=None
                     )
                 elif mapped_note is not None:
                     # Fallback: simple hue based on note number

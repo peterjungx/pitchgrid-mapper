@@ -6,7 +6,8 @@
   export let shape: Array<[number, number]> = [];  // Voronoi vertices in physical coordinates
   export let isActive: boolean = false;
   export let color: string = '#3a3a3a';
-  export let onClick: () => void = () => {};
+  export let onNoteOn: () => void = () => {};
+  export let onNoteOff: () => void = () => {};
 
   // Generate SVG path from Voronoi shape
   $: shapePath = shape && shape.length > 0
@@ -49,14 +50,33 @@
     return path;
   }
 
-  function handleClick() {
-    onClick();
+  function handleMouseDown(event: MouseEvent) {
+    event.preventDefault();
+    onNoteOn();
+  }
+
+  function handleMouseUp(event: MouseEvent) {
+    event.preventDefault();
+    onNoteOff();
+  }
+
+  function handleMouseLeave(event: MouseEvent) {
+    // Send note-off when mouse leaves the pad while pressed
+    if (event.buttons > 0) {
+      onNoteOff();
+    }
   }
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<g on:click={handleClick} class="pad" class:active={isActive}>
+<g
+  on:mousedown={handleMouseDown}
+  on:mouseup={handleMouseUp}
+  on:mouseleave={handleMouseLeave}
+  class="pad"
+  class:active={isActive}
+>
   <path
     d={shapePath}
     fill={isActive ? '#54cec2' : color}

@@ -243,9 +243,10 @@ class MIDIHandler:
                         else:
                             logger.info(f"device {note_type} {controller_note} -> unmapped (no logical coord)")
 
-                # Pass through unchanged (non-note or unmapped)
-                self.midi_out.send_message(message)
-                self.messages_processed += 1
+                else:
+                    # Pass through unchanged (non-note or unmapped)
+                    self.midi_out.send_message(message)
+                    self.messages_processed += 1
 
             except queue.Empty:
                 continue
@@ -318,8 +319,8 @@ class MIDIHandler:
 
         Handles:
         - SysEx messages (start with 0xF0, end with 0xF7): sent as single message
-        - Multiple CC messages: split into 3-byte chunks and send separately
-        - Other messages: sent as-is if <= 3 bytes
+        - Multiple channel messages: parsed and sent separately respecting MIDI boundaries
+        - Single messages: sent as-is
 
         Args:
             data: List of MIDI bytes to send
@@ -333,29 +334,87 @@ class MIDIHandler:
             return
 
         try:
-            # SysEx message - send as single message
-            if data[0] == 0xF0:
-                self.controller_out.send_message(data)
-                logger.debug(f"Sent SysEx to controller: {len(data)} bytes")
-            # Multiple CC messages concatenated together
-            elif len(data) > 3:
-                # Split into 3-byte chunks (status, data1, data2)
-                num_messages = 0
-                for i in range(0, len(data), 3):
-                    if i + 2 < len(data):
-                        chunk = data[i:i+3]
-                        self.controller_out.send_message(chunk)
-                        num_messages += 1
-                        # Add delay between messages to avoid overwhelming the device
-                        if i + 3 < len(data):  # Don't delay after last message
-                            time.sleep(delay_ms / 1000.0)
-                logger.debug(f"Sent {num_messages} MIDI messages to controller ({len(data)} bytes total)")
-            # Single short message
-            else:
-                self.controller_out.send_message(data)
-                logger.debug(f"Sent MIDI to controller: {len(data)} bytes")
+            # Parse MIDI stream into individual messages
+            messages = self._parse_midi_messages(data)
+
+            # Send each message with delay between them
+            for i, msg in enumerate(messages):
+                self.controller_out.send_message(msg)
+                # Add delay between messages (but not after the last one)
+                if i < len(messages) - 1:
+                    time.sleep(delay_ms / 1000.0)
+
+            logger.debug(f"Sent {len(messages)} MIDI message(s) to controller ({len(data)} bytes total)")
         except Exception as e:
             logger.error(f"Error sending MIDI to controller: {e}")
+
+    def _parse_midi_messages(self, data: List[int]) -> List[List[int]]:
+        """
+        Parse a byte stream into individual MIDI messages.
+
+        Respects MIDI message boundaries:
+        - SysEx: 0xF0 ... 0xF7 (variable length)
+        - Channel messages: status + 1-2 data bytes
+        - System messages: status + 0-2 data bytes
+
+        Args:
+            data: Raw MIDI bytes
+
+        Returns:
+            List of individual MIDI messages
+        """
+        messages = []
+        i = 0
+
+        while i < len(data):
+            status = data[i]
+
+            # SysEx message (0xF0 to 0xF7)
+            if status == 0xF0:
+                # Find the end of SysEx (0xF7)
+                end = i + 1
+                while end < len(data) and data[end] != 0xF7:
+                    end += 1
+                if end < len(data):
+                    end += 1  # Include the 0xF7
+                messages.append(data[i:end])
+                i = end
+
+            # Channel messages (0x80-0xEF)
+            elif 0x80 <= status <= 0xEF:
+                msg_type = status & 0xF0
+                # Program Change (0xC0) and Channel Pressure (0xD0) have 1 data byte
+                if msg_type in [0xC0, 0xD0]:
+                    msg_len = 2  # status + 1 data byte
+                else:
+                    # Note On/Off, CC, Pitch Bend, etc. have 2 data bytes
+                    msg_len = 3  # status + 2 data bytes
+
+                messages.append(data[i:i+msg_len])
+                i += msg_len
+
+            # System Common messages (0xF1-0xF6)
+            elif 0xF1 <= status <= 0xF6:
+                if status in [0xF1, 0xF3]:  # Time Code, Song Select
+                    msg_len = 2  # status + 1 data byte
+                elif status == 0xF2:  # Song Position
+                    msg_len = 3  # status + 2 data bytes
+                else:  # 0xF4, 0xF5, 0xF6 (undefined, reserved, Tune Request)
+                    msg_len = 1  # status only
+                messages.append(data[i:i+msg_len])
+                i += msg_len
+
+            # System Real-Time messages (0xF8-0xFF) - single byte
+            elif status >= 0xF8:
+                messages.append([status])
+                i += 1
+
+            else:
+                # Unknown or invalid status byte, skip it
+                logger.warning(f"Unknown MIDI status byte: 0x{status:02X}, skipping")
+                i += 1
+
+        return messages
 
     def shutdown(self):
         """Clean shutdown."""

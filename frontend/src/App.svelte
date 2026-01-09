@@ -190,22 +190,41 @@
     }
   }
 
-  async function handlePadClick(x: number, y: number) {
-    console.log(`Pad clicked: (${x}, ${y})`);
+  async function handlePadNoteOn(x: number, y: number) {
+    console.log(`Pad note on: (${x}, ${y})`);
     try {
       const response = await fetch('/api/trigger_note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y, velocity: 100 }),
+        body: JSON.stringify({ x, y, velocity: 100, note_on: true }),
       });
       const result = await response.json();
       if (result.success) {
-        console.log(`Triggered note: ${result.note}`);
+        console.log(`Note on: ${result.note}`);
       } else {
         console.warn('Pad not mapped:', result.error);
       }
     } catch (error) {
-      console.error('Error triggering note:', error);
+      console.error('Error triggering note on:', error);
+    }
+  }
+
+  async function handlePadNoteOff(x: number, y: number) {
+    console.log(`Pad note off: (${x}, ${y})`);
+    try {
+      const response = await fetch('/api/trigger_note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y, velocity: 0, note_on: false }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        console.log(`Note off: ${result.note}`);
+      } else {
+        console.warn('Pad not mapped:', result.error);
+      }
+    } catch (error) {
+      console.error('Error triggering note off:', error);
     }
   }
 
@@ -321,7 +340,8 @@
         <ControllerCanvas
           pads={status.controller_pads}
           deviceName={status.connected_controller || 'Computer Keyboard'}
-          onPadClick={handlePadClick}
+          onPadNoteOn={handlePadNoteOn}
+          onPadNoteOff={handlePadNoteOff}
         />
       {:else}
         <p>No controller loaded</p>

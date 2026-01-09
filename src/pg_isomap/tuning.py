@@ -112,7 +112,7 @@ class TuningHandler:
                 onscreen_affine,
                 self.root_freq,
                 128,  # Max MIDI note
-                60  # MIDI root note
+                60  # MIDI root note -- might become dynamic later
             )
 
             # Build dictionary from natural coordinate to scale index
