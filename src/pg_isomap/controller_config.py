@@ -79,6 +79,10 @@ class ControllerConfig:
 
         # Generate pad coordinates
         self.pads: List[Tuple[int, int, float, float]] = self._generate_pad_coordinates()
+        print(self.pads)
+        # Calculate cumulative indices
+        self.cumulative_index_by_pad_coord: Dict[Tuple[int, int], int] = {(x,y):idx for idx, (x, y, _, _) in enumerate(self.pads)}
+
 
         # Calculate Voronoi shapes for each pad
         self.pad_shapes: Dict[Tuple[int, int], List[Tuple[float, float]]] = (
@@ -132,6 +136,10 @@ class ControllerConfig:
 
         return pads
 
+    def cumulativeIndex(self, x: int, y: int) -> int:
+        """Get cumulative index for a logical coordinate."""
+        return self.cumulative_index_by_pad_coord.get((x, y), 0)
+
     def get_logical_coordinates(self) -> List[Tuple[int, int]]:
         """Get list of all logical coordinates."""
         return [(x, y) for x, y, _, _ in self.pads]
@@ -170,38 +178,11 @@ class ControllerConfig:
             return None
 
         try:
-            # Helper function for cumulative index calculation
-            def cumulativeIndex(x: int, y: int) -> int:
-                """Calculate cumulative index for a logical coordinate."""
-                # Find the row index for this y coordinate
-                row_idx = y - self.first_row_idx
-                if row_idx < 0 or row_idx >= self.num_rows:
-                    return 0
-
-                # Calculate cumulative offset up to this row
-                cumulative_offset = -sum([
-                    self.row_offsets[e]
-                    for e, _ in enumerate(range(self.first_row_idx, 0))
-                ])
-
-                for i in range(row_idx):
-                    if i > 0:
-                        cumulative_offset += self.row_offsets[i - 1]
-
-                # Calculate column index within the row
-                col_idx = x - cumulative_offset
-
-                # Sum up all pads in previous rows
-                pads_before = sum(self.row_lengths[:row_idx])
-
-                # Add column index
-                return pads_before + col_idx
-
             # Safe eval with limited scope and helper functions
             scope = {
                 'x': x,
                 'y': y,
-                'cumulativeIndex': cumulativeIndex,
+                'cumulativeIndex': self.cumulativeIndex,
             }
             note = eval(self.note_assign, {"__builtins__": {}}, scope)
             #print(f"Calculated note {note} for logical coord ({x}, {y}) (noteAssign: {self.note_assign})")

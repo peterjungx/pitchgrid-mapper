@@ -228,6 +228,8 @@ class MIDITemplateBuilder:
                 "red": kwargs.get('red', 0),
                 "green": kwargs.get('green', 0),
                 "blue": kwargs.get('blue', 0),
+                # Built-in helper functions
+                "cumulativeIndex": self.controller_config.cumulativeIndex,
             }
 
             # Add config-defined functions to evaluation context
