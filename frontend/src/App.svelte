@@ -11,6 +11,7 @@
 
   interface AppStatus {
     connected_controller: string | null;
+    midi_connected: boolean;
     layout_type: string;
     virtual_midi_device: string;
     available_controllers: string[];
@@ -276,7 +277,7 @@
         </select>
 
         <div class="connection-indicators">
-          {#if status.connected_controller && status.connected_controller !== 'Computer Keyboard'}
+          {#if status.midi_connected}
             <span class="connected-indicator midi-connected">● MIDI Connected</span>
           {/if}
           <span class="connected-indicator osc-indicator" class:osc-connected={status.osc_connected}>

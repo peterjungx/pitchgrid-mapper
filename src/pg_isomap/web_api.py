@@ -65,6 +65,9 @@ class WebAPI:
         # Register routes
         self._register_routes()
 
+        # Register startup event for periodic MIDI port refresh
+        self._register_startup_tasks()
+
     def _register_routes(self):
         """Register API routes."""
 
@@ -282,3 +285,26 @@ class WebAPI:
             asyncio.run_coroutine_threadsafe(send_to_all(), self.event_loop)
         except Exception as e:
             logger.error(f"Error scheduling WebSocket broadcast: {e}")
+
+    def _register_startup_tasks(self):
+        """Register startup tasks including periodic MIDI port refresh."""
+        import asyncio
+        from .config import settings
+
+        @self.fastapi.on_event("startup")
+        async def start_midi_port_refresh():
+            """Start periodic MIDI port refresh on the main event loop."""
+            self.event_loop = asyncio.get_event_loop()
+
+            # Do initial refresh
+            self.app.refresh_midi_ports()
+            logger.info("Initial MIDI port refresh completed")
+
+            # Start periodic refresh task
+            async def periodic_refresh():
+                while True:
+                    await asyncio.sleep(settings.discovery_interval_seconds)
+                    self.app.refresh_midi_ports()
+
+            asyncio.create_task(periodic_refresh())
+            logger.info(f"Started periodic MIDI port refresh (every {settings.discovery_interval_seconds}s)")

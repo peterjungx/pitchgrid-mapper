@@ -28,6 +28,7 @@ class MIDIHandler:
         self.midi_out: Optional[rtmidi.MidiOut] = None
         self.controller_port: Optional[rtmidi.MidiIn] = None
         self.controller_out: Optional[rtmidi.MidiOut] = None  # Output TO controller for setup messages
+        self.connected_port_name: Optional[str] = None  # Name of currently connected port
 
         # Note mapping table (logical_x, logical_y) -> midi_note
         self.note_mapping: Dict[Tuple[int, int], int] = {}
@@ -100,6 +101,7 @@ class MIDIHandler:
                 self.midi_in.open_port(in_port_index)
                 self.midi_in.set_callback(self._midi_callback)
                 self.controller_port = self.midi_in
+                self.connected_port_name = output_port_name
                 logger.info(f"Listening to controller on: {output_port_name}")
 
             # Open MIDI output to controller (controller's input port) for setup messages
@@ -126,6 +128,10 @@ class MIDIHandler:
             logger.error(f"Failed to connect to controller: {e}")
             return False
 
+    def is_controller_connected(self) -> bool:
+        """Check if a controller is connected via MIDI."""
+        return self.controller_port is not None
+
     def disconnect_controller(self):
         """Disconnect from controller."""
         if self.controller_port:
@@ -144,6 +150,8 @@ class MIDIHandler:
                 logger.error(f"Error closing controller output port: {e}")
             finally:
                 self.controller_out = None
+
+        self.connected_port_name = None
 
     def _midi_callback(self, event, data=None):
         """MIDI input callback - runs in rtmidi's thread."""
@@ -277,12 +285,20 @@ class MIDIHandler:
                 logger.error(f"Error processing MIDI message: {e}")
 
     def get_available_controllers(self) -> list[str]:
-        """Get list of available MIDI input ports."""
+        """Get list of available MIDI input ports.
+
+        Note: rtmidi caches port lists internally. On macOS (CoreMIDI),
+        sending a message through our virtual port seems to trigger a cache
+        refresh. We send an ignored SysEx (identity request) before scanning.
+        """
         try:
+            # Now query ports - should be refreshed
             midi_in = rtmidi.MidiIn()
-            ports = midi_in.get_ports()
+            in_ports = midi_in.get_ports()
             del midi_in
-            return ports
+            print(in_ports)
+
+            return in_ports
         except Exception as e:
             logger.error(f"Error getting MIDI ports: {e}")
             return []

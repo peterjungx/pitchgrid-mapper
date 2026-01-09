@@ -55,6 +55,10 @@ class PGIsomapApp:
         self._discovery_thread: Optional[threading.Thread] = None
         self._discovery_running = False
 
+        # Cached MIDI ports (updated from main thread to avoid CoreMIDI threading issues)
+        self._cached_midi_ports: list[str] = []
+        self._ports_lock = threading.Lock()
+
         # Setup callbacks
         self.osc_handler.on_scale_update = self._handle_scale_update
         self.osc_handler.on_note_mapping = self._handle_note_mapping
@@ -111,6 +115,7 @@ class PGIsomapApp:
         )
         self._discovery_thread.name = "Controller-Discovery"
         self._discovery_thread.start()
+        logger.info("Controller discovery thread started")
 
     def _stop_discovery(self):
         """Stop controller discovery thread."""
@@ -119,14 +124,93 @@ class PGIsomapApp:
             self._discovery_thread.join(timeout=5.0)
             self._discovery_thread = None
 
+    def refresh_midi_ports(self):
+        """
+        Refresh the cached MIDI port list.
+
+        IMPORTANT: This must be called from the main thread on macOS due to
+        CoreMIDI run loop requirements. Call this periodically from the
+        FastAPI event loop.
+        """
+        ports = self.midi_handler.get_available_controllers()
+        with self._ports_lock:
+            self._cached_midi_ports = ports
+        logger.debug(f"Refreshed MIDI ports: {len(ports)} available")
+
+    def get_cached_midi_ports(self) -> list[str]:
+        """Get the cached list of MIDI ports (thread-safe)."""
+        with self._ports_lock:
+            return self._cached_midi_ports.copy()
+
     def _discovery_loop(self):
-        """Periodically scan for controllers."""
+        """Periodically scan for controllers and broadcast status updates.
+
+        Note: This runs in a separate thread but uses cached port list that
+        is refreshed from the main thread (due to CoreMIDI requirements).
+        """
+        logger.debug("Discovery loop starting first iteration")
+        last_detected = set()
+        last_midi_connected = False
+
         while self._discovery_running:
             try:
-                # Scan for available controllers
-                # Available ports can be queried via get_available_controllers()
-                # when needed by the UI
-                self.midi_handler.get_available_controllers()
+                # Use cached ports (refreshed from main thread)
+                available_ports = self.get_cached_midi_ports()
+                logger.debug(f"Discovery scan: {len(available_ports)} cached ports")
+
+                # Check what controllers are currently detected
+                current_detected = set()
+                for config_name in self.controller_manager.get_all_device_names():
+                    config = self.controller_manager.get_config(config_name)
+                    if config and config.controller_midi_output:
+                        for port in available_ports:
+                            if config.controller_midi_output.lower() in port.lower():
+                                current_detected.add(config_name)
+                                logger.debug(f"Matched {config_name} to port {port}")
+                                break
+
+                # Check if our connected port is still available
+                # If not, auto-disconnect to keep state consistent
+                if self.midi_handler.connected_port_name:
+                    port_still_available = any(
+                        self.midi_handler.connected_port_name.lower() in port.lower()
+                        for port in available_ports
+                    )
+                    if not port_still_available:
+                        logger.info(f"Connected port '{self.midi_handler.connected_port_name}' no longer available, disconnecting")
+                        self.midi_handler.disconnect_controller()
+
+                # Check current MIDI connection state
+                current_midi_connected = self.midi_handler.is_controller_connected()
+
+                # Log and broadcast status update if something changed
+                if current_detected != last_detected or current_midi_connected != last_midi_connected:
+                    logger.debug(f"State change: detected={current_detected} (was {last_detected}), midi_connected={current_midi_connected} (was {last_midi_connected})")
+                    # Log device connection changes
+                    newly_connected = current_detected - last_detected
+                    newly_disconnected = last_detected - current_detected
+                    for device in newly_connected:
+                        logger.info(f"Controller detected: {device}")
+                    for device in newly_disconnected:
+                        logger.info(f"Controller disconnected: {device}")
+                    if current_midi_connected != last_midi_connected:
+                        logger.info(f"MIDI connection state: {'connected' if current_midi_connected else 'disconnected'}")
+
+                    # Auto-connect if the currently selected controller just became available
+                    # and we're not already connected via MIDI
+                    if (self.current_controller and
+                        self.current_controller.device_name in newly_connected and
+                        not current_midi_connected and
+                        self.current_controller.controller_midi_output):
+                        logger.info(f"Auto-connecting to selected controller: {self.current_controller.device_name}")
+                        self.connect_to_controller(self.current_controller.device_name)
+                        # Update midi connected state after auto-connect
+                        current_midi_connected = self.midi_handler.is_controller_connected()
+
+                    last_detected = current_detected
+                    last_midi_connected = current_midi_connected
+                    if self.web_api:
+                        self.web_api.broadcast_status_update()
 
             except Exception as e:
                 logger.error(f"Error in discovery loop: {e}")
@@ -402,7 +486,8 @@ class PGIsomapApp:
     def get_status(self) -> dict:
         """Get current application status."""
         # Get detected controllers (those actually available via MIDI)
-        available_ports = self.midi_handler.get_available_controllers()
+        # Use cached ports to avoid CoreMIDI threading issues
+        available_ports = self.get_cached_midi_ports()
         detected_controllers = []
         for config_name in self.controller_manager.get_all_device_names():
             config = self.controller_manager.get_config(config_name)
@@ -454,6 +539,7 @@ class PGIsomapApp:
 
         return {
             'connected_controller': self.current_controller.device_name if self.current_controller else None,
+            'midi_connected': self.midi_handler.is_controller_connected(),
             'layout_type': self.current_layout_config.layout_type.value,
             'virtual_midi_device': settings.virtual_midi_device_name,
             'available_controllers': self.controller_manager.get_all_device_names(),
