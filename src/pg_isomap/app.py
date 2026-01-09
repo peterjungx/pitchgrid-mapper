@@ -64,6 +64,7 @@ class PGIsomapApp:
         self.osc_handler.on_note_mapping = self._handle_note_mapping
         self.osc_handler.on_connection_changed = self._handle_osc_connection_changed
         self.midi_handler.get_scale_coord = self._get_scale_coordinate
+        self.midi_handler.on_note_event = self._handle_note_event
 
     def start(self):
         """Start the application."""
@@ -419,6 +420,11 @@ class PGIsomapApp:
         if self.web_api:
             self.web_api.broadcast_status_update()
 
+    def _handle_note_event(self, logical_x: int, logical_y: int, note_on: bool):
+        """Handle note event from MIDI handler (for UI highlighting)."""
+        if self.web_api:
+            self.web_api.broadcast_note_event(logical_x, logical_y, note_on)
+
     def _get_scale_coordinate(self, logical_x: int, logical_y: int) -> Optional[tuple[int, int]]:
         """
         Get scale coordinate for a logical coordinate.
@@ -474,6 +480,9 @@ class PGIsomapApp:
         logger.info(
             f"{source} {note_type} -> ({logical_x}, {logical_y}) -> {scale_coord_str} -> note {note}"
         )
+
+        # Notify UI about note event (for highlighting)
+        self._handle_note_event(logical_x, logical_y, note_on)
 
         # Send MIDI message
         if note_on:

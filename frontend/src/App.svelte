@@ -40,6 +40,9 @@
   let status: AppStatus | null = null;
   let selectedController: string = '';
 
+  // Track active (playing) notes by coordinate string "x,y"
+  let activeNotes: Set<string> = new Set();
+
   // Helper to check if controller is detected/available
   function isControllerAvailable(controllerName: string): boolean {
     if (!status) return false;
@@ -138,6 +141,16 @@
       } else if (data.type === 'layout_update') {
         // Handle layout updates
         fetchStatus();
+      } else if (data.type === 'note_event') {
+        // Handle note on/off for pad highlighting
+        const key = `${data.x},${data.y}`;
+        if (data.note_on) {
+          activeNotes.add(key);
+        } else {
+          activeNotes.delete(key);
+        }
+        // Trigger reactivity
+        activeNotes = activeNotes;
       }
     };
 
@@ -343,6 +356,7 @@
           deviceName={status.connected_controller || 'Computer Keyboard'}
           onPadNoteOn={handlePadNoteOn}
           onPadNoteOff={handlePadNoteOff}
+          {activeNotes}
         />
       {:else}
         <p>No controller loaded</p>

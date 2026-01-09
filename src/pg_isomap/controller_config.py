@@ -79,7 +79,6 @@ class ControllerConfig:
 
         # Generate pad coordinates
         self.pads: List[Tuple[int, int, float, float]] = self._generate_pad_coordinates()
-        print(self.pads)
         # Calculate cumulative indices
         self.cumulative_index_by_pad_coord: Dict[Tuple[int, int], int] = {(x,y):idx for idx, (x, y, _, _) in enumerate(self.pads)}
 

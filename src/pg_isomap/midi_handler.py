@@ -38,6 +38,10 @@ class MIDIHandler:
         # Callback for getting scale coordinates
         self.get_scale_coord: Optional[Callable[[int, int], Optional[Tuple[int, int]]]] = None
 
+        # Callback for note events (for UI highlighting)
+        # Signature: on_note_event(logical_x, logical_y, note_on: bool)
+        self.on_note_event: Optional[Callable[[int, int, bool], None]] = None
+
         # Thread control
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -261,6 +265,14 @@ class MIDIHandler:
                                     f"device {note_type} {controller_note} -> ({logical_coord[0]}, {logical_coord[1]}) -> {scale_coord_str} -> note {mapped_note}"
                                 )
 
+                                # Notify UI about note event
+                                is_note_on = (status == NOTE_ON and velocity > 0)
+                                if self.on_note_event:
+                                    try:
+                                        self.on_note_event(logical_coord[0], logical_coord[1], is_note_on)
+                                    except Exception as e:
+                                        logger.error(f"Error in note event callback: {e}")
+
                                 # Send remapped note
                                 remapped_message = [message[0], mapped_note, velocity]
                                 self.midi_out.send_message(remapped_message)
@@ -296,7 +308,6 @@ class MIDIHandler:
             midi_in = rtmidi.MidiIn()
             in_ports = midi_in.get_ports()
             del midi_in
-            print(in_ports)
 
             return in_ports
         except Exception as e:

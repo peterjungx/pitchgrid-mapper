@@ -79,8 +79,8 @@
 >
   <path
     d={shapePath}
-    fill={isActive ? '#54cec2' : color}
-    stroke={isActive ? '#6ee0d4' : '#555555'}
+    fill={isActive ? '#ff4444' : color}
+    stroke={isActive ? '#ff6666' : '#555555'}
     stroke-width="0.05"
   />
   <text
@@ -90,7 +90,7 @@
     dominant-baseline="middle"
     font-family="monospace"
     font-size="3"
-    fill={isActive ? '#ff0' : '#fff'}
+    fill={isActive ? '#fff' : '#fff'}
   >
     {x},{y}
   </text>

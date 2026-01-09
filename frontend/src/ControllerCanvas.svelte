@@ -16,6 +16,7 @@
   export let deviceName: string = '';
   export let onPadNoteOn: (x: number, y: number) => void = (x, y) => {console.log('Pad note on', x, y);};
   export let onPadNoteOff: (x: number, y: number) => void = (x, y) => {console.log('Pad note off', x, y);};
+  export let activeNotes: Set<string> = new Set();
 
   let containerWidth: number = 800;
   let containerHeight: number = 600;
@@ -77,7 +78,7 @@
         phys_y={pad.phys_y}
         shape={pad.shape}
         color={pad.color}
-        isActive={false}
+        isActive={activeNotes.has(`${pad.x},${pad.y}`)}
         onNoteOn={() => onPadNoteOn(pad.x, pad.y)}
         onNoteOff={() => onPadNoteOff(pad.x, pad.y)}
       />

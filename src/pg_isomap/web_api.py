@@ -286,6 +286,48 @@ class WebAPI:
         except Exception as e:
             logger.error(f"Error scheduling WebSocket broadcast: {e}")
 
+    def broadcast_note_event(self, logical_x: int, logical_y: int, note_on: bool):
+        """
+        Broadcast a note event to all WebSocket clients for UI highlighting.
+
+        Args:
+            logical_x: Logical X coordinate of the pad
+            logical_y: Logical Y coordinate of the pad
+            note_on: True for note-on, False for note-off
+        """
+        import asyncio
+
+        if not self.active_connections or self.event_loop is None:
+            return
+
+        message = {
+            'type': 'note_event',
+            'x': logical_x,
+            'y': logical_y,
+            'note_on': note_on
+        }
+
+        # Schedule the broadcast in the event loop
+        async def send_to_all():
+            disconnected = []
+            for connection in self.active_connections[:]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Error broadcasting note event: {e}")
+                    disconnected.append(connection)
+
+            # Remove disconnected clients
+            for connection in disconnected:
+                if connection in self.active_connections:
+                    self.active_connections.remove(connection)
+
+        # Use run_coroutine_threadsafe to schedule from another thread
+        try:
+            asyncio.run_coroutine_threadsafe(send_to_all(), self.event_loop)
+        except Exception as e:
+            logger.error(f"Error scheduling note event broadcast: {e}")
+
     def _register_startup_tasks(self):
         """Register startup tasks including periodic MIDI port refresh."""
         import asyncio
