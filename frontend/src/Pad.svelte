@@ -8,17 +8,22 @@
   export let color: string = '#3a3a3a';
   export let onNoteOn: () => void = () => {};
   export let onNoteOff: () => void = () => {};
-  export let mosCoord: [number, number] | undefined = undefined;
-  export let mosLabelDigit: string | undefined = undefined;
-  export let mosLabelLetter: string | undefined = undefined;
-  export let labelType: 'digits' | 'letters' | 'mos_coords' | 'device_coords' = 'digits';
+  export let midiNote: number | null | undefined = undefined;
+  export let mosCoord: [number, number] | null | undefined = undefined;
+  export let mosLabelDigit: string | null | undefined = undefined;
+  export let mosLabelLetter: string | null | undefined = undefined;
+  export let labelType: 'digits' | 'letters' | 'mos_coords' | 'device_coords' | 'midi_note' = 'digits';
 
   // Compute label to display based on labelType
+  // Use nullish coalescing (??) to handle both null and undefined from JSON
   $: displayLabel = (() => {
-    if (labelType === 'digits' && mosLabelDigit) return mosLabelDigit;
-    if (labelType === 'letters' && mosLabelLetter) return mosLabelLetter;
-    if (labelType === 'mos_coords' && mosCoord) return `${mosCoord[0]},${mosCoord[1]}`;
-    return `${x},${y}`;  // fallback to device coordinates
+    // For non-coordinate label types, show blank if data is missing (unmapped pad)
+    if (labelType === 'digits') return mosLabelDigit ?? '';
+    if (labelType === 'letters') return mosLabelLetter ?? '';
+    if (labelType === 'midi_note') return midiNote != null ? String(midiNote) : '';
+    if (labelType === 'mos_coords') return mosCoord != null ? `${mosCoord[0]},${mosCoord[1]}` : '';
+    // Device coordinates are always available
+    return `${x},${y}`;
   })();
 
   // Generate SVG path from Voronoi shape

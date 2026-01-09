@@ -8,11 +8,11 @@
     phys_x: number;
     phys_y: number;
     shape: Array<[number, number]>;
-    note?: number;
-    color?: string;
-    mos_coord?: [number, number];
-    mos_label_digit?: string;
-    mos_label_letter?: string;
+    note?: number | null;
+    color?: string | null;
+    mos_coord?: [number, number] | null;
+    mos_label_digit?: string | null;
+    mos_label_letter?: string | null;
   }
 
   interface AppStatus {
@@ -74,8 +74,8 @@
   // Track if the page has received user activation (required for keyboard capture)
   let hasUserActivation = false;
 
-  // Pad label type: 'digits' (default), 'letters', 'mos_coords', or 'device_coords'
-  type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords';
+  // Pad label type: 'digits' (default), 'letters', 'mos_coords', 'device_coords', or 'midi_note'
+  type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords' | 'midi_note';
   let padLabelType: LabelType = 'digits';
 
   // Helper to check if controller is detected/available
@@ -405,6 +405,7 @@
         >
           <option value="digits">Digits (1, 2, 3...)</option>
           <option value="letters">Letters (C, D, E...)</option>
+          <option value="midi_note">MIDI Note</option>
           <option value="mos_coords">MOS Coordinates</option>
           <option value="device_coords">Device Coordinates</option>
         </select>
@@ -422,7 +423,7 @@
         </div>
       </div>
 
-      <!-- Transformation Toolbar (only for isomorphic layout) -->
+      <!-- Transformation Toolbar (for isomorphic layout) -->
       {#if status.layout_type === 'isomorphic'}
         <div class="transformation-toolbar">
           <div class="toolbar-group">
@@ -469,6 +470,72 @@
             <button class="toolbar-btn" on:click={() => handleTransformation('reflect_vertical')} title="Reflect Vertical">
               ↕
             </button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Transformation Toolbar (for string-like layout) -->
+      {#if status.layout_type === 'string_like'}
+        <div class="transformation-toolbar">
+          <div class="toolbar-group">
+            <span class="toolbar-label">Shift:</span>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_left')} title="Shift Left (along string)">
+              ←
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_right')} title="Shift Right (along string)">
+              →
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_up')} title="Shift Up (between strings)">
+              ↑
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_down')} title="Shift Down (between strings)">
+              ↓
+            </button>
+          </div>
+
+          <div class="toolbar-group">
+            <span class="toolbar-label">Row Offset:</span>
+            <button class="toolbar-btn" on:click={() => handleTransformation('skew_left')} title="Decrease Row Offset">
+              −
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('skew_right')} title="Increase Row Offset">
+              +
+            </button>
+          </div>
+
+          <div class="toolbar-group">
+            <span class="toolbar-label">Reflect:</span>
+            <button class="toolbar-btn" on:click={() => handleTransformation('reflect_horizontal')} title="Reflect Horizontal (reverse notes + row offset)">
+              ↔
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('reflect_vertical')} title="Reflect Vertical (negate row offset)">
+              ↕
+            </button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Transformation Toolbar (for piano-like layout) -->
+      {#if status.layout_type === 'piano_like'}
+        <div class="transformation-toolbar">
+          <div class="toolbar-group">
+            <span class="toolbar-label">Shift:</span>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_left')} title="Shift Left">
+              ←
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_right')} title="Shift Right">
+              →
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_up')} title="Shift Up">
+              ↑
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_down')} title="Shift Down">
+              ↓
+            </button>
+          </div>
+
+          <div class="toolbar-group">
+            <span class="toolbar-label" style="color: #888;">Piano-like layout (placeholder)</span>
           </div>
         </div>
       {/if}

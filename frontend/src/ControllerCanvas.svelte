@@ -8,14 +8,14 @@
     phys_x: number;
     phys_y: number;
     shape: Array<[number, number]>;
-    note?: number;
-    color?: string;
-    mos_coord?: [number, number];
-    mos_label_digit?: string;
-    mos_label_letter?: string;
+    note?: number | null;
+    color?: string | null;
+    mos_coord?: [number, number] | null;
+    mos_label_digit?: string | null;
+    mos_label_letter?: string | null;
   }
 
-  type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords';
+  type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords' | 'midi_note';
 
   export let pads: PadShape[] = [];
   export let deviceName: string = '';
@@ -87,6 +87,7 @@
         isActive={activeNotes.has(`${pad.x},${pad.y}`)}
         onNoteOn={() => onPadNoteOn(pad.x, pad.y)}
         onNoteOff={() => onPadNoteOff(pad.x, pad.y)}
+        midiNote={pad.note}
         mosCoord={pad.mos_coord}
         mosLabelDigit={pad.mos_label_digit}
         mosLabelLetter={pad.mos_label_letter}
