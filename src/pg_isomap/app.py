@@ -26,6 +26,8 @@ from .midi_handler import MIDIHandler
 from .osc_handler import OSCHandler
 from .tuning import TuningHandler
 
+import scalatrix as sx
+
 logger = logging.getLogger(__name__)
 
 
@@ -535,6 +537,17 @@ class PGIsomapApp:
                     hue = (mapped_note * 30) % 360
                     color = f"hsl({hue}, 70%, 60%)"
 
+                # Get MOS labels if mos_coord is available
+                mos_label_digit = None
+                mos_label_letter = None
+                if mos_coord and self.tuning_handler.mos:
+                    try:
+                        v = sx.Vector2i(mos_coord[0], mos_coord[1])
+                        mos_label_digit = self.tuning_handler.mos.nodeLabelDigit(v)
+                        mos_label_letter = self.tuning_handler.mos.nodeLabelLetter(v)
+                    except Exception as e:
+                        logger.debug(f"Error getting MOS labels for {mos_coord}: {e}")
+
                 controller_pads.append({
                     'x': x,
                     'y': y,
@@ -544,6 +557,8 @@ class PGIsomapApp:
                     'note': mapped_note,
                     'color': color,
                     'mos_coord': mos_coord,
+                    'mos_label_digit': mos_label_digit,
+                    'mos_label_letter': mos_label_letter,
                 })
 
         return {

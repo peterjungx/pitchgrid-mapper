@@ -10,13 +10,19 @@
     shape: Array<[number, number]>;
     note?: number;
     color?: string;
+    mos_coord?: [number, number];
+    mos_label_digit?: string;
+    mos_label_letter?: string;
   }
+
+  type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords';
 
   export let pads: PadShape[] = [];
   export let deviceName: string = '';
   export let onPadNoteOn: (x: number, y: number) => void = (x, y) => {console.log('Pad note on', x, y);};
   export let onPadNoteOff: (x: number, y: number) => void = (x, y) => {console.log('Pad note off', x, y);};
   export let activeNotes: Set<string> = new Set();
+  export let padLabelType: LabelType = 'digits';
 
   let containerWidth: number = 800;
   let containerHeight: number = 600;
@@ -81,6 +87,10 @@
         isActive={activeNotes.has(`${pad.x},${pad.y}`)}
         onNoteOn={() => onPadNoteOn(pad.x, pad.y)}
         onNoteOff={() => onPadNoteOff(pad.x, pad.y)}
+        mosCoord={pad.mos_coord}
+        mosLabelDigit={pad.mos_label_digit}
+        mosLabelLetter={pad.mos_label_letter}
+        labelType={padLabelType}
       />
     {/each}
   </svg>

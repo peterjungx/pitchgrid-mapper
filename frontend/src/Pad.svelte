@@ -8,6 +8,18 @@
   export let color: string = '#3a3a3a';
   export let onNoteOn: () => void = () => {};
   export let onNoteOff: () => void = () => {};
+  export let mosCoord: [number, number] | undefined = undefined;
+  export let mosLabelDigit: string | undefined = undefined;
+  export let mosLabelLetter: string | undefined = undefined;
+  export let labelType: 'digits' | 'letters' | 'mos_coords' | 'device_coords' = 'digits';
+
+  // Compute label to display based on labelType
+  $: displayLabel = (() => {
+    if (labelType === 'digits' && mosLabelDigit) return mosLabelDigit;
+    if (labelType === 'letters' && mosLabelLetter) return mosLabelLetter;
+    if (labelType === 'mos_coords' && mosCoord) return `${mosCoord[0]},${mosCoord[1]}`;
+    return `${x},${y}`;  // fallback to device coordinates
+  })();
 
   // Generate SVG path from Voronoi shape
   $: shapePath = shape && shape.length > 0
@@ -92,7 +104,7 @@
     font-size="3"
     fill={isActive ? '#fff' : '#fff'}
   >
-    {x},{y}
+    {displayLabel}
   </text>
 </g>
 

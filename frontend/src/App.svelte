@@ -7,6 +7,12 @@
     y: number;
     phys_x: number;
     phys_y: number;
+    shape: Array<[number, number]>;
+    note?: number;
+    color?: string;
+    mos_coord?: [number, number];
+    mos_label_digit?: string;
+    mos_label_letter?: string;
   }
 
   interface AppStatus {
@@ -67,6 +73,10 @@
 
   // Track if the page has received user activation (required for keyboard capture)
   let hasUserActivation = false;
+
+  // Pad label type: 'digits' (default), 'letters', 'mos_coords', or 'device_coords'
+  type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords';
+  let padLabelType: LabelType = 'digits';
 
   // Helper to check if controller is detected/available
   function isControllerAvailable(controllerName: string): boolean {
@@ -388,12 +398,23 @@
           <option value="piano_like">Piano-like</option>
         </select>
 
+        <label for="label-select">Labels:</label>
+        <select
+          id="label-select"
+          bind:value={padLabelType}
+        >
+          <option value="digits">Digits (1, 2, 3...)</option>
+          <option value="letters">Letters (C, D, E...)</option>
+          <option value="mos_coords">MOS Coordinates</option>
+          <option value="device_coords">Device Coordinates</option>
+        </select>
+
         <div class="connection-indicators">
           {#if status.midi_connected}
             <span class="connected-indicator midi-connected">● MIDI Connected</span>
           {/if}
           <span class="connected-indicator osc-indicator" class:osc-connected={status.osc_connected}>
-            ● OSC {status.osc_connected ? 'Connected' : 'Disconnected'} (:{status.osc_port})
+            ● OSC {status.osc_connected ? 'Connected' : 'Disconnected'}
           </span>
           {#if status.connected_controller === 'Computer Keyboard' && !hasUserActivation}
             <span class="activation-hint">Click anywhere to enable keyboard</span>
@@ -459,6 +480,7 @@
           onPadNoteOn={handlePadNoteOn}
           onPadNoteOff={handlePadNoteOff}
           {activeNotes}
+          {padLabelType}
         />
       {:else}
         <p>No controller loaded</p>
