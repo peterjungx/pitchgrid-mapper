@@ -1,5 +1,6 @@
 DeviceName: Lumatone
-MIDIDeviceName: Lumatone MIDI
+ControllerMIDIOutput: Lumatone MIDI
+ControllerMIDIInput: Lumatone MIDI
 isMPE: false
 hasGlobalPitchBend: true
 NumRows: 19

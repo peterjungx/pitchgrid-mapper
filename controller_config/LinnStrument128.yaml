@@ -1,5 +1,6 @@
 DeviceName: "LinnStrument 128"
-MIDIDeviceName: "LinnStrument MIDI"
+ControllerMIDIOutput: "LinnStrument MIDI"
+ControllerMIDIInput: "LinnStrument MIDI"
 isMPE: true
 hasGlobalPitchBend: false
 NumRows: 8

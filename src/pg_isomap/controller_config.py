@@ -27,7 +27,20 @@ class ControllerConfig:
 
         # Basic properties
         self.device_name: str = self.config['DeviceName']
-        self.midi_device_name: str = self.config['MIDIDeviceName']
+        # Controller MIDI ports:
+        # - controller_midi_output: port from which controller sends note messages (we listen here)
+        # - controller_midi_input: port to which we send setup/color messages
+        self.controller_midi_output: Optional[str] = self.config.get('ControllerMIDIOutput')
+        self.controller_midi_input: Optional[str] = self.config.get('ControllerMIDIInput')
+        # Handle "none" string as None
+        if self.controller_midi_output == "none":
+            self.controller_midi_output = None
+        if self.controller_midi_input == "none":
+            self.controller_midi_input = None
+        # Legacy support for old config format
+        if not self.controller_midi_output and 'MIDIDeviceName' in self.config:
+            self.controller_midi_output = self.config['MIDIDeviceName']
+            self.controller_midi_input = self.config['MIDIDeviceName']
         self.virtual_midi_device_name: str = self.config.get(
             'virtualMIDIDeviceName', f"PG {self.device_name}"
         )
@@ -191,6 +204,7 @@ class ControllerConfig:
                 'cumulativeIndex': cumulativeIndex,
             }
             note = eval(self.note_assign, {"__builtins__": {}}, scope)
+            #print(f"Calculated note {note} for logical coord ({x}, {y}) (noteAssign: {self.note_assign})")
             return int(note)
         except Exception as e:
             logger.error(f"Error calculating controller note for ({x}, {y}): {e}")
@@ -349,6 +363,7 @@ class ControllerManager:
             Matching ControllerConfig or None
         """
         for config in self.configs.values():
-            if config.midi_device_name.lower() in port_name.lower():
+            # Check against controller's output port (the port we listen on)
+            if config.controller_midi_output and config.controller_midi_output.lower() in port_name.lower():
                 return config
         return None

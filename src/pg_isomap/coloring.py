@@ -53,7 +53,7 @@ class ScaleColoringScheme(ColoringScheme):
         offscale_color: str = "hsl(0, 0%, 50%)",      # Gray
         onscale_color_unmapped: str = "hsl(270, 70%, 30%)",   # Cyan muted (darker)
         onsuperscale_color_unmapped: str = "hsl(120, 70%, 30%)", # Green muted (darker)
-        offscale_color_unmapped: str = "hsl(0, 0%, 40%)"      # Gray muted (darker)
+        offscale_color_unmapped: str = "hsl(0, 0%, 0%)"      # Gray muted (darker)
     ):
         """
         Initialize scale coloring scheme.

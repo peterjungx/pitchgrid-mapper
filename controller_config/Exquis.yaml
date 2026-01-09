@@ -1,5 +1,6 @@
 DeviceName: "Exquis"
-MIDIDeviceName: "Exquis MIDI"
+ControllerMIDIOutput: "Exquis MIDI"
+ControllerMIDIInput: "Exquis MIDI"
 isMPE: true
 hasGlobalPitchBend: false
 NumRows: 11

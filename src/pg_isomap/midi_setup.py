@@ -319,10 +319,10 @@ class MIDITemplateBuilder:
                 substituted_content = loop_content
                 substituted_content = substituted_content.replace('pad.x', str(pad['x']))
                 substituted_content = substituted_content.replace('pad.y', str(pad['y']))
-                substituted_content = substituted_content.replace('pad.red', str(pad.get('red', 0)))
-                substituted_content = substituted_content.replace('pad.green', str(pad.get('green', 0)))
-                substituted_content = substituted_content.replace('pad.blue', str(pad.get('blue', 0)))
-
+                substituted_content = substituted_content.replace('pad.red', str(pad.get('red', 0)//2))
+                substituted_content = substituted_content.replace('pad.green', str(pad.get('green', 0)//2))
+                substituted_content = substituted_content.replace('pad.blue', str(pad.get('blue', 0)//2))
+                print(f"Substituted content for pad ({pad['x']}, {pad['y']}): {substituted_content}")
                 pad_message = self.build_midi_message(substituted_content, **pad)
                 message.extend(pad_message)
 

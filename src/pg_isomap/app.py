@@ -157,8 +157,16 @@ class PGIsomapApp:
             logger.error(f"No configuration found for {device_name}")
             return False
 
-        # Try to connect
-        if not self.midi_handler.connect_to_controller(config.midi_device_name):
+        # Check if this controller has MIDI ports
+        if not config.controller_midi_output:
+            logger.warning(f"Controller {device_name} has no MIDI output port configured")
+            return False
+
+        # Try to connect using separate input/output ports
+        if not self.midi_handler.connect_to_controller(
+            output_port_name=config.controller_midi_output,
+            input_port_name=config.controller_midi_input
+        ):
             return False
 
         # Update current controller
@@ -398,10 +406,10 @@ class PGIsomapApp:
         detected_controllers = []
         for config_name in self.controller_manager.get_all_device_names():
             config = self.controller_manager.get_config(config_name)
-            if config and config.device_name != "Computer Keyboard":
-                # Check if this controller's MIDI device is available
+            if config and config.device_name != "Computer Keyboard" and config.controller_midi_output:
+                # Check if this controller's MIDI output port is available
                 for port in available_ports:
-                    if config.midi_device_name.lower() in port.lower():
+                    if config.controller_midi_output.lower() in port.lower():
                         detected_controllers.append(config_name)
                         break
 
@@ -499,11 +507,22 @@ class PGIsomapApp:
     def _send_pad_colors(self):
         """Send color updates to physical controller."""
         if not self.current_controller or not self.midi_handler:
+            logger.debug("_send_pad_colors: No controller or midi_handler")
             return
 
         # Only send if we have color templates
         if not (self.current_controller.set_pad_colors_bulk or self.current_controller.set_pad_color):
+            logger.debug(f"_send_pad_colors: No color templates for {self.current_controller.device_name}")
             return
+
+        # Check if MIDI output is available
+        if not self.midi_handler.controller_out:
+            logger.warning(f"_send_pad_colors: MIDI output not connected for {self.current_controller.device_name}")
+            return
+
+        logger.info(f"_send_pad_colors: Sending colors for {self.current_controller.device_name}"
+                    f" (bulk={bool(self.current_controller.set_pad_colors_bulk)},"
+                    f" individual={bool(self.current_controller.set_pad_color)})")
 
         try:
             from .midi_setup import MIDITemplateBuilder

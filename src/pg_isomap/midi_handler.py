@@ -57,45 +57,68 @@ class MIDIHandler:
             logger.error(f"Failed to create virtual MIDI port: {e}")
             return False
 
-    def connect_to_controller(self, port_name: str) -> bool:
-        """Connect to a physical controller (both input and output)."""
+    def connect_to_controller(
+        self,
+        output_port_name: Optional[str],
+        input_port_name: Optional[str] = None
+    ) -> bool:
+        """
+        Connect to a physical controller.
+
+        Args:
+            output_port_name: MIDI port from which controller sends notes (we listen here).
+                              If None, no input connection is made.
+            input_port_name: MIDI port to which we send setup/color messages.
+                             If None, defaults to output_port_name for devices with single port.
+
+        Returns:
+            True if connection successful
+        """
         try:
             if self.controller_port:
                 self.disconnect_controller()
 
-            # Open MIDI input from controller
-            self.midi_in = rtmidi.MidiIn()
-            in_ports = self.midi_in.get_ports()
-            in_port_index = None
-            for i, p in enumerate(in_ports):
-                if port_name in p:
-                    in_port_index = i
-                    break
+            # If no input port specified, assume same as output (single-port device)
+            if input_port_name is None:
+                input_port_name = output_port_name
 
-            if in_port_index is None:
-                logger.error(f"Controller input port '{port_name}' not found")
-                return False
+            # Open MIDI input from controller (controller's output port)
+            if output_port_name:
+                self.midi_in = rtmidi.MidiIn()
+                in_ports = self.midi_in.get_ports()
+                in_port_index = None
+                for i, p in enumerate(in_ports):
+                    if output_port_name in p:
+                        in_port_index = i
+                        break
 
-            self.midi_in.open_port(in_port_index)
-            self.midi_in.set_callback(self._midi_callback)
-            self.controller_port = self.midi_in
+                if in_port_index is None:
+                    logger.error(f"Controller output port '{output_port_name}' not found in available ports")
+                    logger.debug(f"Available input ports: {in_ports}")
+                    return False
 
-            # Open MIDI output to controller (for setup messages)
-            self.controller_out = rtmidi.MidiOut()
-            out_ports = self.controller_out.get_ports()
-            out_port_index = None
-            for i, p in enumerate(out_ports):
-                if port_name in p:
-                    out_port_index = i
-                    break
+                self.midi_in.open_port(in_port_index)
+                self.midi_in.set_callback(self._midi_callback)
+                self.controller_port = self.midi_in
+                logger.info(f"Listening to controller on: {output_port_name}")
 
-            if out_port_index is not None:
-                self.controller_out.open_port(out_port_index)
-                logger.info(f"Connected to controller (bidirectional): {port_name}")
-            else:
-                logger.warning(f"Controller output port not found, setup messages will not work")
-                self.controller_out = None
-                logger.info(f"Connected to controller (input only): {port_name}")
+            # Open MIDI output to controller (controller's input port) for setup messages
+            if input_port_name:
+                self.controller_out = rtmidi.MidiOut()
+                out_ports = self.controller_out.get_ports()
+                out_port_index = None
+                for i, p in enumerate(out_ports):
+                    if input_port_name in p:
+                        out_port_index = i
+                        break
+
+                if out_port_index is not None:
+                    self.controller_out.open_port(out_port_index)
+                    logger.info(f"Sending setup messages to controller on: {input_port_name}")
+                else:
+                    logger.warning(f"Controller input port '{input_port_name}' not found, setup messages will not work")
+                    logger.debug(f"Available output ports: {out_ports}")
+                    self.controller_out = None
 
             return True
 
@@ -336,6 +359,7 @@ class MIDIHandler:
         try:
             # Parse MIDI stream into individual messages
             messages = self._parse_midi_messages(data)
+            print(messages)
 
             # Send each message with delay between them
             for i, msg in enumerate(messages):

@@ -1,5 +1,6 @@
 DeviceName: "Computer Keyboard"
-MIDIDeviceName: none
+ControllerMIDIOutput: none
+ControllerMIDIInput: none
 isMPE: false
 hasGlobalPitchBend: false
 NumRows: 4
