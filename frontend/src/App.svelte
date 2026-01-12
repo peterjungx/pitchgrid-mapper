@@ -56,16 +56,16 @@
     'KeyZ': [0, 0], 'KeyX': [1, 0], 'KeyC': [2, 0], 'KeyV': [3, 0], 'KeyB': [4, 0],
     'KeyN': [5, 0], 'KeyM': [6, 0], 'Comma': [7, 0], 'Period': [8, 0], 'Slash': [9, 0],
     // Row 1 (y=1): A, S, D, F, G, H, J, K, L, semicolon, quote
-    'KeyA': [0, 1], 'KeyS': [1, 1], 'KeyD': [2, 1], 'KeyF': [3, 1], 'KeyG': [4, 1],
-    'KeyH': [5, 1], 'KeyJ': [6, 1], 'KeyK': [7, 1], 'KeyL': [8, 1], 'Semicolon': [9, 1], 'Quote': [10, 1],
+    'KeyA': [-1, 1], 'KeyS': [0, 1], 'KeyD': [1, 1], 'KeyF': [2, 1], 'KeyG': [3, 1],
+    'KeyH': [4, 1], 'KeyJ': [5, 1], 'KeyK': [6, 1], 'KeyL': [7, 1], 'Semicolon': [8, 1], 'Quote': [9, 1],
     // Row 2 (y=2): Q, W, E, R, T, Y, U, I, O, P, bracket left, bracket right, backslash
-    'KeyQ': [0, 2], 'KeyW': [1, 2], 'KeyE': [2, 2], 'KeyR': [3, 2], 'KeyT': [4, 2],
-    'KeyY': [5, 2], 'KeyU': [6, 2], 'KeyI': [7, 2], 'KeyO': [8, 2], 'KeyP': [9, 2],
-    'BracketLeft': [10, 2], 'BracketRight': [11, 2], 'Backslash': [12, 2],
+    'KeyQ': [-2, 2], 'KeyW': [-1, 2], 'KeyE': [0, 2], 'KeyR': [1, 2], 'KeyT': [2, 2],
+    'KeyY': [3, 2], 'KeyU': [4, 2], 'KeyI': [5, 2], 'KeyO': [6, 2], 'KeyP': [7, 2],
+    'BracketLeft': [8, 2], 'BracketRight': [9, 2], 'Backslash': [10, 2],
     // Row 3 (y=3): 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, minus, equal
-    'Digit1': [0, 3], 'Digit2': [1, 3], 'Digit3': [2, 3], 'Digit4': [3, 3], 'Digit5': [4, 3],
-    'Digit6': [5, 3], 'Digit7': [6, 3], 'Digit8': [7, 3], 'Digit9': [8, 3], 'Digit0': [9, 3],
-    'Minus': [10, 3], 'Equal': [11, 3],
+    'Digit1': [-3, 3], 'Digit2': [-2, 3], 'Digit3': [-1, 3], 'Digit4': [0, 3], 'Digit5': [1, 3],
+    'Digit6': [2, 3], 'Digit7': [3, 3], 'Digit8': [4, 3], 'Digit9': [5, 3], 'Digit0': [6, 3],
+    'Minus': [7, 3], 'Equal': [8, 3],
   };
 
   // Track which keys are currently pressed to prevent repeat triggers
@@ -520,22 +520,48 @@
         <div class="transformation-toolbar">
           <div class="toolbar-group">
             <span class="toolbar-label">Shift:</span>
-            <button class="toolbar-btn" on:click={() => handleTransformation('shift_left')} title="Shift Left">
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_left')} title="Shift Left (along scale)">
               ←
             </button>
-            <button class="toolbar-btn" on:click={() => handleTransformation('shift_right')} title="Shift Right">
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_right')} title="Shift Right (along scale)">
               →
             </button>
-            <button class="toolbar-btn" on:click={() => handleTransformation('shift_up')} title="Shift Up">
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_up')} title="Shift Up (between strips)">
               ↑
             </button>
-            <button class="toolbar-btn" on:click={() => handleTransformation('shift_down')} title="Shift Down">
+            <button class="toolbar-btn" on:click={() => handleTransformation('shift_down')} title="Shift Down (between strips)">
               ↓
             </button>
           </div>
 
           <div class="toolbar-group">
-            <span class="toolbar-label" style="color: #888;">Piano-like layout (placeholder)</span>
+            <span class="toolbar-label">Strip Offset:</span>
+            <button class="toolbar-btn" on:click={() => handleTransformation('skew_left')} title="Decrease Strip Offset">
+              −
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('skew_right')} title="Increase Strip Offset">
+              +
+            </button>
+          </div>
+
+          <div class="toolbar-group">
+            <span class="toolbar-label">Strip Width:</span>
+            <button class="toolbar-btn" on:click={() => handleTransformation('decrease_strip_width')} title="Decrease Strip Width">
+              −
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('increase_strip_width')} title="Increase Strip Width">
+              +
+            </button>
+          </div>
+
+          <div class="toolbar-group">
+            <span class="toolbar-label">Scale Row:</span>
+            <button class="toolbar-btn" on:click={() => handleTransformation('scale_row_down')} title="Move Scale Row Down">
+              ↓
+            </button>
+            <button class="toolbar-btn" on:click={() => handleTransformation('scale_row_up')} title="Move Scale Row Up">
+              ↑
+            </button>
           </div>
         </div>
       {/if}

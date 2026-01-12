@@ -138,37 +138,16 @@ class IsomorphicLayout(LayoutCalculator):
                 mos_coord_tuple = (mos_coord.x, mos_coord.y)
 
                 # If we have a coord_to_scale_index mapping, use it
-                if coord_to_scale_index is not None:
-                    if mos_coord_tuple in coord_to_scale_index:
-                        # This coordinate is in the scale - use its index as the MIDI note
-                        note = coord_to_scale_index[mos_coord_tuple]
+                if coord_to_scale_index is None:
+                    continue 
 
-                        # Clamp to MIDI range
-                        if 0 <= note <= 127:
-                            mapping[(logical_x, logical_y)] = note
-                else:
-                    # Fallback: old chromatic mapping logic
-                    # Calculate MIDI note from MOS coordinate
-                    # The MOS coordinate (x, y) maps to note = x + y * equave_steps
-                    mos_x = mos_coord.x
-                    mos_y = mos_coord.y
+                if mos_coord_tuple in coord_to_scale_index:
+                    # This coordinate is in the scale - use its index as the MIDI note
+                    note = coord_to_scale_index[mos_coord_tuple]
 
-                    # Calculate which octave we're in
-                    # Assuming equave at 12 semitones
-                    total_steps = mos_x + mos_y * scale_size
-
-                    # Get the degree within the scale
-                    degree = total_steps % scale_size
-                    octave = total_steps // scale_size
-
-                    # Map to MIDI note
-                    if 0 <= degree < len(scale_degrees):
-                        base_note = scale_degrees[degree]
-                        note = base_note + octave * 12
-
-                        # Clamp to MIDI range
-                        if 0 <= note <= 127:
-                            mapping[(logical_x, logical_y)] = note
+                    # Clamp to MIDI range
+                    if 0 <= note <= 127:
+                        mapping[(logical_x, logical_y)] = note
 
             except Exception as e:
                 logger.debug(f"Failed to map coordinate ({logical_x}, {logical_y}): {e}")

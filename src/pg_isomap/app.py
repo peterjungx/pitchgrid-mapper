@@ -345,7 +345,12 @@ class PGIsomapApp:
                     default_root=default_root
                 )
             elif self.current_layout_config.layout_type == LayoutType.PIANO_LIKE:
-                self.current_layout_calculator = PianoLikeLayout(self.current_layout_config)
+                # Pass default root coordinate from controller config
+                default_root = self.current_controller.default_iso_root_coordinate
+                self.current_layout_calculator = PianoLikeLayout(
+                    self.current_layout_config,
+                    default_root=default_root
+                )
             else:
                 logger.error(f"Unsupported layout type: {self.current_layout_config.layout_type}")
                 return

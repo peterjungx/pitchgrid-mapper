@@ -6,11 +6,11 @@ hasGlobalPitchBend: false
 NumRows: 4
 FirstRowIdx: 0
 RowLengths: [10, 11, 13, 12]
-RowOffsets: [0,0,0]
+RowOffsets: [-1,-1,-1]
 HorizonToRowAngle: 0.0
-RowToColAngle: 112.62
+RowToColAngle: 59.74
 xSpacing: 19.0
-ySpacing: 20.58
+ySpacing: 22
 fixedLabels:
   - ["Z","X","C","V","B","N","M",",",".","/"]
   - ["A","S","D","F","G","H","J","K","L",";","'"]
