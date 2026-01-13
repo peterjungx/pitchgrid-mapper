@@ -71,3 +71,6 @@ config/local.yaml
 
 # Prototype/reference files
 _prototype_reference_main.py
+
+# Build artifacts
+*.dmg
