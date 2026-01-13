@@ -1,9 +1,20 @@
 """Configuration management for pg-isomap."""
 
+import sys
 from pathlib import Path
 from typing import Optional
 
 from pydantic_settings import BaseSettings
+
+
+def _get_base_path() -> Path:
+    """Get the base path for resources, handling PyInstaller bundle."""
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # Running in PyInstaller bundle
+        return Path(sys._MEIPASS)
+    else:
+        # Running in development
+        return Path(__file__).parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -30,9 +41,9 @@ class Settings(BaseSettings):
     web_host: str = "127.0.0.1"
     web_port: int = 0  # 0 = ephemeral port (assigned by OS)
 
-    # Paths
-    controller_config_dir: Path = Path(__file__).parent.parent.parent / "controller_config"
-    frontend_dist_dir: Optional[Path] = Path(__file__).parent.parent.parent / "frontend" / "dist"
+    # Paths - computed at runtime based on bundle vs development
+    controller_config_dir: Path = _get_base_path() / "controller_config"
+    frontend_dist_dir: Optional[Path] = _get_base_path() / "frontend" / "dist"
 
     class Config:
         env_prefix = "PGISOMAP_"
