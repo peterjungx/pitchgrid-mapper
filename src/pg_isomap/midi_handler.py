@@ -44,7 +44,7 @@ def find_best_matching_port(search_string: str, available_ports: List[str]) -> O
 class MIDIHandler:
     """Handles MIDI input/output with real-time note remapping."""
 
-    def __init__(self, virtual_device_name: str = "PG Isomap"):
+    def __init__(self, virtual_device_name: str = "PitchGrid Mapper"):
         self.virtual_device_name = virtual_device_name
 
         # MIDI ports

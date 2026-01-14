@@ -70,7 +70,7 @@ class PGIsomapApp:
 
     def start(self):
         """Start the application."""
-        logger.info("Starting PG Isomap...")
+        logger.info("Starting PitchGrid Mapper...")
 
         # Try to auto-load computer keyboard config FIRST
         self._try_load_computer_keyboard()
@@ -89,13 +89,13 @@ class PGIsomapApp:
         # Start controller discovery
         self._start_discovery()
 
-        logger.info("PG Isomap started successfully")
+        logger.info("PitchGrid Mapper started successfully")
         logger.info(f"Current controller: {self.current_controller.device_name if self.current_controller else 'None'}")
         return True
 
     def stop(self):
         """Stop the application."""
-        logger.info("Stopping PG Isomap...")
+        logger.info("Stopping PitchGrid Mapper...")
 
         # Stop discovery
         self._stop_discovery()
@@ -104,7 +104,7 @@ class PGIsomapApp:
         self.midi_handler.shutdown()
         self.osc_handler.stop()
 
-        logger.info("PG Isomap stopped")
+        logger.info("PitchGrid Mapper stopped")
 
     def _start_discovery(self):
         """Start controller discovery thread."""

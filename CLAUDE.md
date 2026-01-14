@@ -1,8 +1,8 @@
-# CLAUDE.md - Development Guidelines for PG Isomap
+# CLAUDE.md - Development Guidelines for PitchGrid Mapper
 
 ## Project Overview
 
-This is PG Isomap (PitchGrid Isomorphic Controller Mapper), a Python application that maps microtonal scales from the PitchGrid VST plugin to various isomorphic MIDI controllers.
+This is PitchGrid Mapper, a Python application that maps microtonal scales from the PitchGrid VST plugin to various isomorphic MIDI controllers.
 
 ## Important Constraints
 

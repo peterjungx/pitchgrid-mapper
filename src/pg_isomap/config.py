@@ -1,4 +1,4 @@
-"""Configuration management for pg-isomap."""
+"""Configuration management for PitchGrid Mapper."""
 
 import sys
 from pathlib import Path
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "PitchGrid Mapper"
-    app_full_name: str = "PitchGrid Mapper"
+    app_full_name: str = "PitchGrid Isomorphic Controller Mapper"
     version: str = "0.1.0"
     debug: bool = False
 

@@ -53,25 +53,25 @@ ls -la icons/
 echo "🍎 Creating macOS .icns file..."
 if command -v iconutil &> /dev/null; then
     # Create iconset directory structure
-    mkdir -p ${APP_NAME}.iconset
+    mkdir -p "${APP_NAME}.iconset"
 
     # Copy icons with correct naming for iconutil
-    cp icons/icon_16x16.png ${APP_NAME}.iconset/icon_16x16.png
-    cp icons/icon_16x16@2x.png ${APP_NAME}.iconset/icon_16x16@2x.png
-    cp icons/icon_32x32.png ${APP_NAME}.iconset/icon_32x32.png
-    cp icons/icon_32x32@2x.png ${APP_NAME}.iconset/icon_32x32@2x.png
-    cp icons/icon_128x128.png ${APP_NAME}.iconset/icon_128x128.png
-    cp icons/icon_128x128@2x.png ${APP_NAME}.iconset/icon_128x128@2x.png
-    cp icons/icon_256x256.png ${APP_NAME}.iconset/icon_256x256.png
-    cp icons/icon_256x256@2x.png ${APP_NAME}.iconset/icon_256x256@2x.png
-    cp icons/icon_512x512.png ${APP_NAME}.iconset/icon_512x512.png
-    cp icons/icon_512x512@2x.png ${APP_NAME}.iconset/icon_512x512@2x.png
+    cp icons/icon_16x16.png "${APP_NAME}.iconset/icon_16x16.png"
+    cp icons/icon_16x16@2x.png "${APP_NAME}.iconset/icon_16x16@2x.png"
+    cp icons/icon_32x32.png "${APP_NAME}.iconset/icon_32x32.png"
+    cp icons/icon_32x32@2x.png "${APP_NAME}.iconset/icon_32x32@2x.png"
+    cp icons/icon_128x128.png "${APP_NAME}.iconset/icon_128x128.png"
+    cp icons/icon_128x128@2x.png "${APP_NAME}.iconset/icon_128x128@2x.png"
+    cp icons/icon_256x256.png "${APP_NAME}.iconset/icon_256x256.png"
+    cp icons/icon_256x256@2x.png "${APP_NAME}.iconset/icon_256x256@2x.png"
+    cp icons/icon_512x512.png "${APP_NAME}.iconset/icon_512x512.png"
+    cp icons/icon_512x512@2x.png "${APP_NAME}.iconset/icon_512x512@2x.png"
 
     # Generate .icns file
-    iconutil -c icns ${APP_NAME}.iconset -o ${APP_NAME}.icns
+    iconutil -c icns "${APP_NAME}.iconset" -o "${APP_NAME}.icns"
 
     # Clean up iconset directory
-    rm -rf ${APP_NAME}.iconset
+    rm -rf "${APP_NAME}.iconset"
 
     echo "✅ Created ${APP_NAME}.icns"
 else

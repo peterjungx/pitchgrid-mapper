@@ -15,7 +15,8 @@ fi
 APP_NAME="${APP_NAME:-PitchGrid Mapper}"
 APP_VERSION="${APP_VERSION:-0.1.0}"
 APP_PATH="dist/${APP_NAME}.app"
-DMG_PATH="${APP_NAME}-${APP_VERSION}.dmg"
+DMG_NAME="${APP_NAME// /-}"  # Replace spaces with dashes for DMG filename
+DMG_PATH="${DMG_NAME}-${APP_VERSION}.dmg"
 
 # Configuration from environment
 APPLE_ID="${APPLE_ID:-your-apple-id@email.com}"

@@ -14,7 +14,7 @@
 #define ApplicationName "PitchGrid Mapper"
 #define ApplicationExeName "PitchGrid Mapper"
 #define CompanyName "PitchGrid"
-#define PublisherURL "https://github.com/nodeaudio/pg_isomap"
+#define PublisherURL "https://github.com/peterjungx/pitchgrid-mapper"
 
 [Setup]
 ; Application metadata

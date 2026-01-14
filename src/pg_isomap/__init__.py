@@ -1,5 +1,5 @@
 """
-PitchGrid Isomorphic Controller Mapper (pg-isomap)
+PitchGrid Mapper
 
 A universal mapper between PitchGrid microtonal scales and isomorphic MIDI controllers.
 """

@@ -1,10 +1,10 @@
-# PitchGrid Isomorphic Controller Mapper (pg-isomap)
+# PitchGrid Isomorphic Controller Mapper
 
 A universal mapper between PitchGrid microtonal scales and isomorphic MIDI controllers.
 
 ## Overview
 
-PG Isomap provides musicians with easy access to microtonal scales on various isomorphic controllers. The application:
+PitchGrid Mapper provides musicians with easy access to microtonal scales on various isomorphic controllers. The application:
 
 - Creates a virtual MIDI device that connects to the PitchGrid plugin
 - Automatically discovers and connects to supported controllers
@@ -21,7 +21,7 @@ PG Isomap provides musicians with easy access to microtonal scales on various is
          │ MIDI In
          ▼
 ┌─────────────────────────────────────────┐
-│         PG Isomap Application           │
+│      PitchGrid Mapper Application       │
 │  ┌───────────────────────────────────┐  │
 │  │   High-Priority MIDI Thread       │  │
 │  │   - Note remapping                │  │
@@ -73,7 +73,8 @@ Additional controllers can be added via YAML configuration files.
 
 1. **Clone the repository:**
    ```bash
-   cd /Users/peter/dev/PitchGrid/pg_isomap
+   git clone https://github.com/peterjungx/pitchgrid-mapper.git
+   cd pitchgrid-mapper
    ```
 
 2. **Install Python dependencies with uv:**
@@ -146,7 +147,7 @@ Create a `.env` file in the project root:
 
 ```env
 PGISOMAP_DEBUG=false
-PGISOMAP_VIRTUAL_MIDI_DEVICE_NAME="PG Isomap"
+PGISOMAP_VIRTUAL_MIDI_DEVICE_NAME="PitchGrid Mapper"
 PGISOMAP_OSC_LISTEN_PORT=9000
 PGISOMAP_WEB_PORT=8080
 ```
@@ -192,10 +193,10 @@ defaultIsoRootCoordinate: [5, 3]
 
 ## Usage
 
-1. **Start the application** - Virtual MIDI device "PG Isomap" is created automatically
+1. **Start the application** - Virtual MIDI device "PitchGrid Mapper" is created automatically
 
 2. **Configure your DAW:**
-   - Set MIDI input to "PG Isomap"
+   - Set MIDI input to "PitchGrid Mapper"
    - Route to PitchGrid plugin
 
 3. **Configure PitchGrid plugin:**
@@ -267,7 +268,7 @@ The application depends on the [scalatrix](../scalatrix) library for scale theor
 cd ../scalatrix
 # Follow scalatrix build instructions
 
-# Link to pg-isomap
+# Link to pitchgrid-mapper
 # TODO: Add specific integration steps
 ```
 

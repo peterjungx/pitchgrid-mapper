@@ -1,4 +1,4 @@
-# PG Isomap - Project Status
+# PitchGrid Mapper - Project Status
 
 **Created:** 2026-01-08
 **Status:** Initial scaffolding complete, ready for implementation
@@ -7,7 +7,7 @@
 
 ### ✅ Project Structure
 ```
-pg_isomap/
+pitchgrid-mapper/
 ├── src/pg_isomap/          # Python backend
 │   ├── __init__.py
 │   ├── __main__.py         # Entry point

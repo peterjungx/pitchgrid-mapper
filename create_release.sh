@@ -12,7 +12,8 @@ fi
 
 APP_NAME="${APP_NAME:-PitchGrid Mapper}"
 VERSION="${APP_VERSION:-0.1.0}"
-DMG_PATH="${APP_NAME}-${VERSION}.dmg"
+DMG_NAME="${APP_NAME// /-}"  # Replace spaces with dashes for DMG filename
+DMG_PATH="${DMG_NAME}-${VERSION}.dmg"
 
 # Check if DMG exists
 if [ ! -f "$DMG_PATH" ]; then

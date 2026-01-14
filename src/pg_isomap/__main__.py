@@ -1,4 +1,4 @@
-"""Main entry point for pg-isomap application."""
+"""Main entry point for PitchGrid Mapper application."""
 
 import logging
 import sys
