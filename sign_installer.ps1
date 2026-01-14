@@ -1,7 +1,5 @@
-# Sign Windows executable using Azure Trusted Signing
-# Usage: .\sign_app.ps1 [exe_path]
-#
-# This should be run BEFORE creating the installer with Inno Setup.
+# Sign Windows installer using Azure Trusted Signing
+# Usage: .\sign_installer.ps1 [installer_path]
 #
 # Requires:
 # - Azure account with Trusted Signing configured
@@ -9,7 +7,7 @@
 # - Environment variables: AZURE_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_CERT_PROFILE
 
 param(
-    [string]$ExePath
+    [string]$InstallerPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,20 +29,26 @@ if (-not $AppName) { $AppName = "PGIsomap" }
 $AppVersion = $env:APP_VERSION
 if (-not $AppVersion) { $AppVersion = "0.1.0" }
 
-Write-Host "Signing $AppName executable..." -ForegroundColor Cyan
+Write-Host "Signing $AppName Windows installer..." -ForegroundColor Cyan
 
-# Find executable to sign
-if (-not $ExePath) {
-    $ExePath = "dist\$AppName\$AppName.exe"
+# Find installer to sign
+if (-not $InstallerPath) {
+    $OutputDir = "Installers\Windows\Output"
+    $InstallerFile = Get-ChildItem "$OutputDir\*.exe" -ErrorAction SilentlyContinue |
+                     Sort-Object LastWriteTime -Descending |
+                     Select-Object -First 1
+    if ($InstallerFile) {
+        $InstallerPath = $InstallerFile.FullName
+    }
 }
 
-if (-not (Test-Path $ExePath)) {
-    Write-Host "Error: Executable not found at $ExePath" -ForegroundColor Red
-    Write-Host "Build the app first, or specify path: .\sign_app.ps1 path\to\app.exe" -ForegroundColor Yellow
+if (-not $InstallerPath -or -not (Test-Path $InstallerPath)) {
+    Write-Host "Error: No installer found to sign" -ForegroundColor Red
+    Write-Host "Run .\create_installer.ps1 first, or specify path: .\sign_installer.ps1 path\to\installer.exe" -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "  Executable: $ExePath"
+Write-Host "  Installer: $InstallerPath"
 
 # Check Azure Trusted Signing configuration
 $AzureEndpoint = $env:AZURE_ENDPOINT
@@ -55,7 +59,7 @@ if (-not $AzureEndpoint) {
     Write-Host "Error: AZURE_ENDPOINT not set in .env" -ForegroundColor Red
     Write-Host "Set your Azure Trusted Signing endpoint URL" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "For self-signed testing, use: .\sign_app_selfsigned.ps1" -ForegroundColor Yellow
+    Write-Host "For self-signed testing, use: .\sign_installer_selfsigned.ps1" -ForegroundColor Yellow
     exit 1
 }
 
@@ -81,7 +85,7 @@ if (-not (Get-InstalledModule TrustedSigning -ErrorAction SilentlyContinue)) {
 }
 Write-Host "  TrustedSigning module ready"
 
-# Sign the executable
+# Sign the installer
 Write-Host ""
 Write-Host "Signing with Azure Trusted Signing..." -ForegroundColor Yellow
 
@@ -89,7 +93,7 @@ $params = @{
     Endpoint              = $AzureEndpoint
     CodeSigningAccountName = $SigningAccount
     CertificateProfileName = $CertProfile
-    Files                 = $ExePath
+    Files                 = $InstallerPath
     FileDigest            = "SHA256"
     TimestampRfc3161      = "http://timestamp.acs.microsoft.com"
     TimestampDigest       = "SHA256"
@@ -102,7 +106,7 @@ try {
 }
 catch {
     Write-Host ""
-    Write-Host "Error signing executable: $_" -ForegroundColor Red
+    Write-Host "Error signing installer: $_" -ForegroundColor Red
     Write-Host ""
     Write-Host "Troubleshooting:" -ForegroundColor Yellow
     Write-Host "  1. Ensure you're logged in to Azure: az login" -ForegroundColor Yellow
@@ -115,7 +119,7 @@ catch {
 Write-Host ""
 Write-Host "Verifying signature..." -ForegroundColor Yellow
 
-$sig = Get-AuthenticodeSignature $ExePath
+$sig = Get-AuthenticodeSignature $InstallerPath
 if ($sig.Status -eq "Valid") {
     Write-Host "  Signature Status: Valid" -ForegroundColor Green
     Write-Host "  Signer: $($sig.SignerCertificate.Subject)"
@@ -126,9 +130,7 @@ else {
 }
 
 Write-Host ""
-Write-Host "Signed executable ready for packaging:" -ForegroundColor Cyan
-Write-Host "  $ExePath"
+Write-Host "Signed installer ready for distribution:" -ForegroundColor Green
+Write-Host "  $InstallerPath"
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  1. Create installer: .\create_installer.ps1"
-Write-Host "  2. Sign installer: .\sign_installer.ps1"
+Write-Host "The installer is now fully signed and ready to distribute!" -ForegroundColor Cyan

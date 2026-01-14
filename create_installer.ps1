@@ -110,7 +110,7 @@ if ($InstallerFile) {
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Yellow
     Write-Host "  1. Test the installer locally"
-    Write-Host "  2. Sign with Azure Trusted Signing: .\sign_app.ps1"
+    Write-Host "  2. Sign with: .\sign_installer.ps1 (or .\sign_installer_selfsigned.ps1 for testing)"
 }
 else {
     Write-Host "Error: Installer file not found after build" -ForegroundColor Red

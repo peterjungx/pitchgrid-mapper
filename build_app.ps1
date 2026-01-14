@@ -114,5 +114,6 @@ Write-Host "  Output: dist\$AppName\" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Test the application: .\dist\$AppName\$AppName.exe"
-Write-Host "  2. Create installer: .\create_installer.ps1"
-Write-Host "  3. Sign installer: .\sign_app.ps1"
+Write-Host "  2. Sign the executable: .\sign_app.ps1 (or .\sign_app_selfsigned.ps1 for testing)"
+Write-Host "  3. Create installer: .\create_installer.ps1"
+Write-Host "  4. Sign the installer: .\sign_installer.ps1 (or .\sign_installer_selfsigned.ps1 for testing)"
