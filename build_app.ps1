@@ -1,4 +1,4 @@
-# Build script for PG Isomap Windows application
+# Build script for PitchGrid Mapper Windows application
 # Usage: .\build_app.ps1
 
 $ErrorActionPreference = "Stop"
@@ -15,7 +15,7 @@ if (Test-Path ".env") {
 }
 
 $AppName = $env:APP_NAME
-if (-not $AppName) { $AppName = "PGIsomap" }
+if (-not $AppName) { $AppName = "PitchGrid Mapper" }
 
 $AppVersion = $env:APP_VERSION
 if (-not $AppVersion) { $AppVersion = "0.1.0" }

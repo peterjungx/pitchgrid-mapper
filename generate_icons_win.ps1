@@ -6,7 +6,7 @@
 $ErrorActionPreference = "Stop"
 
 $AppName = $env:APP_NAME
-if (-not $AppName) { $AppName = "PGIsomap" }
+if (-not $AppName) { $AppName = "PitchGrid Mapper" }
 
 Write-Host "Generating Windows icon for $AppName..." -ForegroundColor Cyan
 

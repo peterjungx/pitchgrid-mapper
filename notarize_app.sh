@@ -1,5 +1,5 @@
 #!/bin/bash
-# Notarization script for PG Isomap
+# Notarization script for PitchGrid Mapper
 # Requires: Apple Developer account with notarization enabled
 
 set -e
@@ -12,9 +12,10 @@ if [ -f .env ]; then
 fi
 
 # Get configuration from environment
-APP_NAME="${APP_NAME:-PGIsomap}"
+APP_NAME="${APP_NAME:-PitchGrid Mapper}"
+APP_VERSION="${APP_VERSION:-0.1.0}"
 APP_PATH="dist/${APP_NAME}.app"
-DMG_PATH="${APP_NAME}.dmg"
+DMG_PATH="${APP_NAME}-${APP_VERSION}.dmg"
 
 # Configuration from environment
 APPLE_ID="${APPLE_ID:-your-apple-id@email.com}"

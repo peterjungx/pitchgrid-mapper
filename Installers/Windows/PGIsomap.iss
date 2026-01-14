@@ -1,4 +1,4 @@
-; Inno Setup Script for PG Isomap
+; Inno Setup Script for PitchGrid Mapper
 ; Requires Inno Setup 6.x
 
 #ifndef VERSION_STRING
@@ -11,8 +11,8 @@
   #define BUILDS_PATH "..\.."
 #endif
 
-#define ApplicationName "PG Isomap"
-#define ApplicationExeName "PGIsomap"
+#define ApplicationName "PitchGrid Mapper"
+#define ApplicationExeName "PitchGrid Mapper"
 #define CompanyName "PitchGrid"
 #define PublisherURL "https://github.com/nodeaudio/pg_isomap"
 
@@ -30,8 +30,8 @@ AppUpdatesURL={#PublisherURL}
 ; Installation settings
 DefaultDirName={autopf}\{#CompanyName}\{#ApplicationName}
 DefaultGroupName={#ApplicationName}
-OutputBaseFilename=PGIsomap-{#VERSION_STRING}-Setup
-SetupIconFile={#BUILDS_PATH}\PGIsomap.ico
+OutputBaseFilename=PitchGrid-Mapper-{#VERSION_STRING}-Setup
+SetupIconFile={#BUILDS_PATH}\PitchGrid Mapper.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 
@@ -72,18 +72,49 @@ Filename: "{app}\{#ApplicationExeName}.exe"; Description: "{cm:LaunchProgram,{#S
 function IsWebView2Installed: Boolean;
 var
   RegKey: String;
+  Version: String;
 begin
   Result := False;
-  // Check user install
   RegKey := 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
-  if RegKeyExists(HKEY_CURRENT_USER, RegKey) then
-    Result := True
-  // Check machine install
-  else if RegKeyExists(HKEY_LOCAL_MACHINE, RegKey) then
-    Result := True
+
+  // Check user install
+  if RegQueryStringValue(HKEY_CURRENT_USER, RegKey, 'pv', Version) then
+  begin
+    if Version <> '' then
+      Result := True;
+  end;
+
+  // Check machine install (32-bit registry view)
+  if not Result then
+  begin
+    if RegQueryStringValue(HKEY_LOCAL_MACHINE, RegKey, 'pv', Version) then
+    begin
+      if Version <> '' then
+        Result := True;
+    end;
+  end;
+
   // Check 64-bit machine install
-  else if IsWin64 and RegKeyExists(HKEY_LOCAL_MACHINE_64, RegKey) then
-    Result := True;
+  if not Result and IsWin64 then
+  begin
+    if RegQueryStringValue(HKEY_LOCAL_MACHINE_64, RegKey, 'pv', Version) then
+    begin
+      if Version <> '' then
+        Result := True;
+    end;
+  end;
+
+  // Also check for Edge browser (includes WebView2)
+  if not Result then
+  begin
+    RegKey := 'Software\Microsoft\EdgeUpdate\Clients\{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}';
+    if RegQueryStringValue(HKEY_LOCAL_MACHINE, RegKey, 'pv', Version) or
+       RegQueryStringValue(HKEY_LOCAL_MACHINE_64, RegKey, 'pv', Version) then
+    begin
+      if Version <> '' then
+        Result := True;
+    end;
+  end;
 end;
 
 function InitializeSetup: Boolean;
@@ -93,7 +124,7 @@ begin
   Result := True;
   if not IsWebView2Installed then
   begin
-    if MsgBox('PG Isomap requires Microsoft Edge WebView2 Runtime.'#13#10#13#10 +
+    if MsgBox('PitchGrid Mapper requires Microsoft Edge WebView2 Runtime.'#13#10#13#10 +
               'Would you like to download it now?', mbConfirmation, MB_YESNO) = IDYES then
     begin
       ShellExec('open', 'https://go.microsoft.com/fwlink/p/?LinkId=2124703', '', '', SW_SHOW, ewNoWait, ErrorCode);

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for PG Isomap macOS app
+# Build script for PitchGrid Mapper macOS app
 
 set -e  # Exit on any error
 
@@ -10,7 +10,7 @@ if [ -f .env ]; then
     set +a
 fi
 
-APP_NAME="${APP_NAME:-PGIsomap}"
+APP_NAME="${APP_NAME:-PitchGrid Mapper}"
 echo "Building ${APP_NAME} macOS application..."
 
 # Check if uv is installed

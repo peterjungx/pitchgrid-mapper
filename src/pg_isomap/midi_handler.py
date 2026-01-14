@@ -82,7 +82,7 @@ class MIDIHandler:
 
     def initialize_virtual_port(self) -> bool:
         """
-        Create or connect to virtual MIDI output port named 'PitchGrid ICM'.
+        Create or connect to virtual MIDI output port named 'PitchGrid Mapper'.
 
         On macOS/Linux:
         - First checks if port already exists, connects to it

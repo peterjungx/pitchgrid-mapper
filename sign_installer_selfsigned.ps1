@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$AppName = "PGIsomap"
+$AppName = "PitchGrid Mapper"
 $AppVersion = "0.1.0"
 
 Write-Host "Creating self-signed certificate for testing..." -ForegroundColor Cyan

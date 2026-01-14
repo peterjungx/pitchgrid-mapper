@@ -1,5 +1,5 @@
 #!/bin/bash
-# Icon generation script for PG Isomap
+# Icon generation script for PitchGrid Mapper
 # Generates all required macOS app icon sizes from icon_app.svg
 
 set -e  # Exit on any error
@@ -11,7 +11,7 @@ if [ -f .env ]; then
     set +a
 fi
 
-APP_NAME="${APP_NAME:-PGIsomap}"
+APP_NAME="${APP_NAME:-PitchGrid Mapper}"
 
 echo "🎨 Generating ${APP_NAME} app icons..."
 

@@ -3,7 +3,7 @@
 
 set -e
 
-echo "=== PG Isomap Production Mode ==="
+echo "=== PitchGrid Mapper Production Mode ==="
 echo ""
 
 # Check if uv is installed
@@ -24,8 +24,8 @@ if [ ! -d "frontend/dist" ] || [ "frontend/src" -nt "frontend/dist" ]; then
 fi
 
 echo ""
-echo "Starting PG Isomap..."
-echo "Virtual MIDI Device: PG Isomap"
+echo "Starting PitchGrid Mapper..."
+echo "Virtual MIDI Device: PitchGrid Mapper"
 echo ""
 
 # Run desktop app

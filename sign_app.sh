@@ -1,5 +1,5 @@
 #!/bin/bash
-# Code signing script for PG Isomap
+# Code signing script for PitchGrid Mapper
 # Usage: ./sign_app.sh [identity]
 
 set -e
@@ -12,7 +12,7 @@ if [ -f .env ]; then
 fi
 
 IDENTITY="${1:-$CODESIGN_IDENTITY}"
-APP_NAME="${APP_NAME:-PGIsomap}"
+APP_NAME="${APP_NAME:-PitchGrid Mapper}"
 APP_PATH="dist/${APP_NAME}.app"
 
 if [ ! -d "$APP_PATH" ]; then

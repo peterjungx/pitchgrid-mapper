@@ -21,13 +21,13 @@ class Settings(BaseSettings):
     """Application settings."""
 
     # Application
-    app_name: str = "PitchGrid ICM"
-    app_full_name: str = "PitchGrid Isomorphic Controller Mapper"
+    app_name: str = "PitchGrid Mapper"
+    app_full_name: str = "PitchGrid Mapper"
     version: str = "0.1.0"
     debug: bool = False
 
     # MIDI
-    virtual_midi_device_name: str = "PitchGrid ICM"
+    virtual_midi_device_name: str = "PitchGrid Mapper"
     midi_buffer_size: int = 1024
 
     # OSC (bidirectional communication with PitchGrid plugin)

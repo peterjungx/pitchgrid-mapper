@@ -3,7 +3,7 @@
 
 set -e
 
-echo "=== PG Isomap Development Mode ==="
+echo "=== PitchGrid Mapper Development Mode ==="
 echo ""
 
 # Check if uv is installed
@@ -42,7 +42,7 @@ echo ""
 echo "Starting Desktop App with Hot Reload..."
 echo "Backend API: http://localhost:8080"
 echo "Frontend Dev Server: http://localhost:5173 (with hot reload)"
-echo "Virtual MIDI Device: PG Isomap"
+echo "Virtual MIDI Device: PitchGrid Mapper"
 echo ""
 echo "The desktop app window will load the dev server for hot reload."
 echo "Press Ctrl+C to stop all services"
@@ -94,7 +94,7 @@ import os
 url = 'http://localhost:5173'
 
 window = webview.create_window(
-    title='PG Isomap (Dev)',
+    title='PitchGrid Mapper (Dev)',
     url=url,
     width=1280,
     height=800,
