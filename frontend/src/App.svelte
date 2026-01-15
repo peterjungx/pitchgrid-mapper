@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import ControllerCanvas from './ControllerCanvas.svelte';
   import TransformIcon from './TransformIcon.svelte';
+  import ButtonSymbol from './ButtonSymbol.svelte';
 
   interface Pad {
     x: number;
@@ -439,6 +440,7 @@
       {#if status.layout_type === 'isomorphic'}
         {@const geometry = getGeometry(status)}
         {@const isQuad = isQuadLayout(status)}
+        {#key `${geometry.horizonAngle}-${geometry.rowToColAngle}`}
         <div class="transformation-toolbar">
           <!-- Shift operations -->
           <div class="toolbar-group">
@@ -553,11 +555,14 @@
             {/if}
           </div>
         </div>
+        {/key}
       {/if}
 
       <!-- Transformation Toolbar (for string-like layout) -->
       {#if status.layout_type === 'string_like'}
         {@const geometry = getGeometry(status)}
+        {@const isQuad = isQuadLayout(status)}
+        {#key `${geometry.horizonAngle}-${geometry.rowToColAngle}`}
         <div class="transformation-toolbar">
           <div class="toolbar-group">
             <span class="toolbar-label">Shift:</span>
@@ -573,15 +578,23 @@
             <button class="toolbar-btn" on:click={() => handleTransformation('shift_down')} title="Shift Down (between strings)">
               <TransformIcon type="shift" direction="down" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
             </button>
+            {#if !isQuad}
+              <button class="toolbar-btn" on:click={() => handleTransformation('shift_upright')} title="Shift Up-Right">
+                <TransformIcon type="shift" direction="upright" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
+              </button>
+              <button class="toolbar-btn" on:click={() => handleTransformation('shift_downleft')} title="Shift Down-Left">
+                <TransformIcon type="shift" direction="downleft" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
+              </button>
+            {/if}
           </div>
 
           <div class="toolbar-group">
             <span class="toolbar-label">Row Offset:</span>
             <button class="toolbar-btn" on:click={() => handleTransformation('skew_left')} title="Decrease Row Offset">
-              −
+              <ButtonSymbol type="minus" />
             </button>
             <button class="toolbar-btn" on:click={() => handleTransformation('skew_right')} title="Increase Row Offset">
-              +
+              <ButtonSymbol type="plus" />
             </button>
           </div>
 
@@ -593,13 +606,21 @@
             <button class="toolbar-btn" on:click={() => handleTransformation('reflect_vertical')} title="Reflect Vertical">
               <TransformIcon type="reflect" direction="up" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
             </button>
+            {#if !isQuad}
+              <button class="toolbar-btn" on:click={() => handleTransformation('reflect_xy_hex')} title="Reflect XY">
+                <TransformIcon type="reflect" direction="xy_hex" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
+              </button>
+            {/if}
           </div>
         </div>
+        {/key}
       {/if}
 
       <!-- Transformation Toolbar (for piano-like layout) -->
       {#if status.layout_type === 'piano_like'}
         {@const geometry = getGeometry(status)}
+        {@const isQuad = isQuadLayout(status)}
+        {#key `${geometry.horizonAngle}-${geometry.rowToColAngle}`}
         <div class="transformation-toolbar">
           <div class="toolbar-group">
             <span class="toolbar-label">Shift:</span>
@@ -615,38 +636,47 @@
             <button class="toolbar-btn" on:click={() => handleTransformation('shift_down')} title="Shift Down (between strips)">
               <TransformIcon type="shift" direction="down" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
             </button>
+            {#if !isQuad}
+              <button class="toolbar-btn" on:click={() => handleTransformation('shift_upright')} title="Shift Up-Right">
+                <TransformIcon type="shift" direction="upright" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
+              </button>
+              <button class="toolbar-btn" on:click={() => handleTransformation('shift_downleft')} title="Shift Down-Left">
+                <TransformIcon type="shift" direction="downleft" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
+              </button>
+            {/if}
           </div>
 
           <div class="toolbar-group">
             <span class="toolbar-label">Strip Offset:</span>
             <button class="toolbar-btn" on:click={() => handleTransformation('skew_left')} title="Decrease Strip Offset">
-              −
+              <ButtonSymbol type="minus" />
             </button>
             <button class="toolbar-btn" on:click={() => handleTransformation('skew_right')} title="Increase Strip Offset">
-              +
+              <ButtonSymbol type="plus" />
             </button>
           </div>
 
           <div class="toolbar-group">
             <span class="toolbar-label">Strip Width:</span>
             <button class="toolbar-btn" on:click={() => handleTransformation('decrease_strip_width')} title="Decrease Strip Width">
-              −
+              <ButtonSymbol type="minus" />
             </button>
             <button class="toolbar-btn" on:click={() => handleTransformation('increase_strip_width')} title="Increase Strip Width">
-              +
+              <ButtonSymbol type="plus" />
             </button>
           </div>
 
           <div class="toolbar-group">
             <span class="toolbar-label">Scale Row:</span>
             <button class="toolbar-btn" on:click={() => handleTransformation('scale_row_down')} title="Move Scale Row Down">
-              ↓
+              <ButtonSymbol type="down" />
             </button>
             <button class="toolbar-btn" on:click={() => handleTransformation('scale_row_up')} title="Move Scale Row Up">
-              ↑
+              <ButtonSymbol type="up" />
             </button>
           </div>
         </div>
+        {/key}
       {/if}
 
       {#if status.controller_pads.length > 0}
@@ -845,7 +875,9 @@
   }
 
   .toolbar-btn {
-    padding: 0.35em 0.5em;
+    width: 2.5em;
+    height: 2.5em;
+    padding: 0;
     border: 1px solid #444;
     border-radius: 4px;
     background-color: #1a1a1a;
@@ -853,8 +885,10 @@
     font-size: 1em;
     cursor: pointer;
     transition: all 0.2s;
-    min-width: 2em;
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .toolbar-btn:hover {

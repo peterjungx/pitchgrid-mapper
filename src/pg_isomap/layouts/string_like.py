@@ -66,7 +66,9 @@ class StringLikeLayout(LayoutCalculator):
 
         Args:
             transform_type: One of 'shift_left', 'shift_right', 'shift_up', 'shift_down',
-                          'skew_left', 'skew_right', 'reflect_horizontal', 'reflect_vertical'
+                          'shift_upright', 'shift_downleft' (hex only),
+                          'skew_left', 'skew_right',
+                          'reflect_horizontal', 'reflect_vertical', 'reflect_xy_hex' (hex only)
         """
         if transform_type == 'shift_left':
             self.root_x -= 1
@@ -75,6 +77,14 @@ class StringLikeLayout(LayoutCalculator):
         elif transform_type == 'shift_up':
             self.root_y += 1
         elif transform_type == 'shift_down':
+            self.root_y -= 1
+        elif transform_type == 'shift_upright':
+            # Diagonal shift for hex layouts: +x, +y
+            self.root_x += 1
+            self.root_y += 1
+        elif transform_type == 'shift_downleft':
+            # Diagonal shift for hex layouts: -x, -y
+            self.root_x -= 1
             self.root_y -= 1
         elif transform_type == 'skew_left':
             self.row_offset -= 1
@@ -86,6 +96,10 @@ class StringLikeLayout(LayoutCalculator):
         elif transform_type == 'reflect_horizontal':
             # Reflect horizontally: flip horizontal direction
             self.flip_horizontal = not self.flip_horizontal
+        elif transform_type == 'reflect_xy_hex':
+            # Reflect along third hex axis: flip both directions
+            self.flip_horizontal = not self.flip_horizontal
+            self.flip_vertical = not self.flip_vertical
         else:
             logger.warning(f"Unknown transformation type for string-like layout: {transform_type}")
 

@@ -86,6 +86,7 @@ class PianoLikeLayout(LayoutCalculator):
             transform_type: One of:
                 - 'shift_left', 'shift_right': Move along scale axis
                 - 'shift_up', 'shift_down': Move between piano strips
+                - 'shift_upright', 'shift_downleft': Diagonal shifts (hex only)
                 - 'skew_left', 'skew_right': Adjust row_offset
                 - 'increase_strip_width', 'decrease_strip_width': Change strip width
                 - 'scale_row_up', 'scale_row_down': Move scale row within strip
@@ -97,6 +98,14 @@ class PianoLikeLayout(LayoutCalculator):
         elif transform_type == 'shift_up':
             self.root_y += 1
         elif transform_type == 'shift_down':
+            self.root_y -= 1
+        elif transform_type == 'shift_upright':
+            # Diagonal shift for hex layouts: +x, +y
+            self.root_x += 1
+            self.root_y += 1
+        elif transform_type == 'shift_downleft':
+            # Diagonal shift for hex layouts: -x, -y
+            self.root_x -= 1
             self.root_y -= 1
         elif transform_type == 'skew_left':
             self.row_offset -= 1
