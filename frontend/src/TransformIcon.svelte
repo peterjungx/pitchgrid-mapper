@@ -7,7 +7,7 @@
    * - HorizonToRowAngle: angle of device X axis from horizontal
    * - RowToColAngle: angle between device X and Y axes
    */
-  export let type: 'shift' | 'skew' | 'reflect' | 'rotate';
+  export let type: 'shift' | 'skew' | 'reflect' | 'rotate' | 'reverse';
   export let direction: 'left' | 'right' | 'up' | 'down' | 'upright' | 'downleft' | 'upleft' | 'downright' | 'x_hex' | 'y_hex' | 'xy_hex' | 'left_hex' | 'right_hex';
   export let horizonToRowAngle: number = 0; // Angle in degrees
   export let rowToColAngle: number = 90; // Angle in degrees
@@ -251,6 +251,68 @@
     `;
   }
 
+  function getReverseIcon(): string {
+    // For reverse, direction="left" uses the same angle as reflect left
+    // and direction="up" is always 90 degrees rotated from "left"
+    let angle = 0;
+
+    switch (direction) {
+      case 'left':
+      case 'right':
+        // Same as reflect left/right: axis along X
+        angle = deviceXAngle;
+        break;
+      case 'up':
+      case 'down':
+        // Always perpendicular to left: rotate by 90 degrees
+        angle = deviceXAngle + 90;
+        break;
+    }
+
+    // Normalize angle
+    angle = angle % 360;
+    if (angle < 0) angle += 360;
+
+    const cx = size / 2;
+    const cy = size / 2;
+    const lineLength = size * 1.0;
+    const arrowLength = size * 0.85;
+    const arrowHead = size * 0.18;
+
+    // Draw reflection axis line
+    const rad = (angle * Math.PI) / 180;
+    const lx1 = cx - (lineLength / 2) * Math.cos(rad);
+    const ly1 = cy + (lineLength / 2) * Math.sin(rad);
+    const lx2 = cx + (lineLength / 2) * Math.cos(rad);
+    const ly2 = cy - (lineLength / 2) * Math.sin(rad);
+
+    // Draw double-headed arrow perpendicular to the axis
+    const perpRad = rad + Math.PI / 2;
+    const ax1 = cx - (arrowLength / 2) * Math.cos(perpRad);
+    const ay1 = cy + (arrowLength / 2) * Math.sin(perpRad);
+    const ax2 = cx + (arrowLength / 2) * Math.cos(perpRad);
+    const ay2 = cy - (arrowLength / 2) * Math.sin(perpRad);
+
+    // Arrowhead 1 (pointing away from center)
+    const h1a1x = ax1 - arrowHead * Math.cos(perpRad + (5 * Math.PI) / 6);
+    const h1a1y = ay1 + arrowHead * Math.sin(perpRad + (5 * Math.PI) / 6);
+    const h1a2x = ax1 - arrowHead * Math.cos(perpRad - (5 * Math.PI) / 6);
+    const h1a2y = ay1 + arrowHead * Math.sin(perpRad - (5 * Math.PI) / 6);
+
+    // Arrowhead 2 (pointing away from center)
+    const h2a1x = ax2 + arrowHead * Math.cos(perpRad + (5 * Math.PI) / 6);
+    const h2a1y = ay2 - arrowHead * Math.sin(perpRad + (5 * Math.PI) / 6);
+    const h2a2x = ax2 + arrowHead * Math.cos(perpRad - (5 * Math.PI) / 6);
+    const h2a2y = ay2 - arrowHead * Math.sin(perpRad - (5 * Math.PI) / 6);
+
+    return `
+      <line x1="${lx1}" y1="${ly1}" x2="${lx2}" y2="${ly2}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="3,2" />
+      <line x1="${ax1}" y1="${ay1}" x2="${ax2}" y2="${ay2}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M ${h1a1x} ${h1a1y} L ${ax1} ${ay1} L ${h1a2x} ${h1a2y}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      <path d="M ${h2a1x} ${h2a1y} L ${ax2} ${ay2} L ${h2a2x} ${h2a2y}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    `;
+  }
+
   function getRotateIcon(): string {
     const isLeft = (direction === 'left_hex' || direction === 'left');
 
@@ -320,6 +382,7 @@
   $: iconPath = type === 'shift' ? getShiftIcon()
               : type === 'skew' ? getSkewIcon()
               : type === 'reflect' ? getReflectIcon()
+              : type === 'reverse' ? getReverseIcon()
               : type === 'rotate' ? getRotateIcon()
               : '';
 </script>

@@ -73,10 +73,6 @@ class PianoLikeLayout(LayoutCalculator):
         # Controller row count (set during calculate_mapping)
         self._controller_rows = 0
 
-    def set_root(self, root_x: int, root_y: int):
-        """Set the root position."""
-        self.root_x = root_x
-        self.root_y = root_y
 
     def apply_transformation(self, transform_type: str):
         """
@@ -99,14 +95,12 @@ class PianoLikeLayout(LayoutCalculator):
             self.root_y += 1
         elif transform_type == 'shift_down':
             self.root_y -= 1
-        elif transform_type == 'shift_upright':
-            # Diagonal shift for hex layouts: +x, +y
-            self.root_x += 1
+        elif transform_type == 'shift_upleft':
             self.root_y += 1
-        elif transform_type == 'shift_downleft':
-            # Diagonal shift for hex layouts: -x, -y
-            self.root_x -= 1
+            self.root_x -= self.strip_width
+        elif transform_type == 'shift_downright':
             self.root_y -= 1
+            self.root_x += self.strip_width
         elif transform_type == 'skew_left':
             self.row_offset -= 1
         elif transform_type == 'skew_right':
@@ -190,6 +184,7 @@ class PianoLikeLayout(LayoutCalculator):
 
         accidental_sign = 1 if mos.L_vec.x == 1 else -1
         neutral_mode = 1 if mos.L_vec.x == 1 else mos.n0 - 2
+
         for logical_x, logical_y in logical_coords:
             # Determine which piano strip this row belongs to
             # Rows are numbered from bottom (y=0) to top
@@ -207,7 +202,7 @@ class PianoLikeLayout(LayoutCalculator):
 
             # Position within strip (0 = bottom row of strip)
             y_within_strip = y_from_bottom % self.strip_width - self.scale_row_index
-            x_within_strip = logical_x - self.root_x + strip_number * self.row_offset
+            x_within_strip = logical_x - self.root_x + (strip_number - self.root_y) * self.row_offset
 
             # go from strip coord to mos coordinate by using (scale_degree, accidental) as intermediate step
             scale_degree = x_within_strip

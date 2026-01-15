@@ -42,11 +42,7 @@ class StringLikeLayout(LayoutCalculator):
         # Row offset: how many scale indices each row is offset by (default 5, like guitar fourths)
         self.row_offset = 5
 
-        # Horizontal flip: if True, notes decrease along x instead of increase
-        self.flip_horizontal = False
-
-        # Vertical flip: if True, row_offset is negated
-        self.flip_vertical = False
+        self.x_sign = 1
 
         # Determine if controller is quad-like or hex-like
         self.quad_or_hex = 'rect' if 75 < row_to_col_angle < 105 else 'hex'
@@ -54,11 +50,6 @@ class StringLikeLayout(LayoutCalculator):
 
         # Cache for reverse lookup: scale_index -> mos_coord
         self._index_to_mos_coord: Dict[int, Tuple[int, int]] = {}
-
-    def set_root(self, root_x: int, root_y: int):
-        """Set the root position."""
-        self.root_x = root_x
-        self.root_y = root_y
 
     def apply_transformation(self, transform_type: str):
         """
@@ -78,33 +69,32 @@ class StringLikeLayout(LayoutCalculator):
             self.root_y += 1
         elif transform_type == 'shift_down':
             self.root_y -= 1
-        elif transform_type == 'shift_upright':
-            # Diagonal shift for hex layouts: +x, +y
-            self.root_x += 1
-            self.root_y += 1
-        elif transform_type == 'shift_downleft':
-            # Diagonal shift for hex layouts: -x, -y
+        elif transform_type == 'shift_upleft':
+            # Diagonal shift for hex layouts: +x, -y
             self.root_x -= 1
+            self.root_y += 1
+        elif transform_type == 'shift_downright':
+            # Diagonal shift for hex layouts: -x, +y
+            self.root_x += 1
             self.root_y -= 1
         elif transform_type == 'skew_left':
             self.row_offset -= 1
         elif transform_type == 'skew_right':
             self.row_offset += 1
         elif transform_type == 'reflect_vertical':
-            # Reflect vertically: flip vertical direction
-            self.flip_vertical = not self.flip_vertical
+            self.row_offset = -self.row_offset
         elif transform_type == 'reflect_horizontal':
-            # Reflect horizontally: flip horizontal direction
-            self.flip_horizontal = not self.flip_horizontal
-        elif transform_type == 'reflect_xy_hex':
-            # Reflect along third hex axis: flip both directions
-            self.flip_horizontal = not self.flip_horizontal
-            self.flip_vertical = not self.flip_vertical
+            self.x_sign = -self.x_sign
+        elif transform_type == 'reflect_vertical_hex':
+            self.row_offset = 1 - self.row_offset
+        elif transform_type == 'reflect_horizontal_hex':
+            self.x_sign = -self.x_sign
+            self.row_offset += self.x_sign
         else:
             logger.warning(f"Unknown transformation type for string-like layout: {transform_type}")
 
-        logger.info(f"String-like transform {transform_type}: root=({self.root_x}, {self.root_y}), "
-                   f"row_offset={self.row_offset}, flip_h={self.flip_horizontal}, flip_v={self.flip_vertical}")
+        #logger.info(f"String-like transform {transform_type}: root=({self.root_x}, {self.root_y}), "
+        #           f"row_offset={self.row_offset}, flip_h={self.flip_horizontal}, flip_v={self.flip_vertical}")
 
     def _build_reverse_lookup(self, coord_to_scale_index: Dict[Tuple[int, int], int]):
         """Build reverse lookup from scale index to MOS coordinate."""
@@ -121,14 +111,9 @@ class StringLikeLayout(LayoutCalculator):
         If flip_vertical, the y contribution is negated.
         """
         x_delta = logical_x - self.root_x
-        if self.flip_horizontal:
-            x_delta = -x_delta
-
         y_delta = logical_y - self.root_y
-        if self.flip_vertical:
-            y_delta = -y_delta
 
-        return (y_delta * self.row_offset) + x_delta + 60
+        return (y_delta * self.row_offset) + self.x_sign * x_delta + 60
 
     def calculate_mapping(
         self,
