@@ -78,9 +78,6 @@
   // Track which keys are currently pressed to prevent repeat triggers
   const pressedKeys: Set<string> = new Set();
 
-  // Track if the page has received user activation (required for keyboard capture)
-  let hasUserActivation = false;
-
   // Pad label type: 'digits' (default), 'letters', 'mos_coords', 'device_coords', or 'midi_note'
   type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords' | 'midi_note';
   let padLabelType: LabelType = 'digits';
@@ -355,13 +352,6 @@
     pressedKeys.clear();
   }
 
-  // Handle first user interaction to enable keyboard capture
-  function handleUserActivation() {
-    if (!hasUserActivation) {
-      hasUserActivation = true;
-    }
-  }
-
   onMount(() => {
     connectWebSocket();
     fetchStatus();
@@ -370,10 +360,6 @@
     document.addEventListener('keydown', handleKeyDown, { capture: true });
     document.addEventListener('keyup', handleKeyUp, { capture: true });
     window.addEventListener('blur', handleWindowBlur);
-
-    // Track user activation - any click or keypress activates the page
-    document.addEventListener('click', handleUserActivation, { once: true });
-    document.addEventListener('keydown', handleUserActivation, { once: true });
   });
 
   // Update selected controller when status changes
