@@ -104,43 +104,18 @@ Write-Host "  Authenticated"
 
 # Create release notes
 $releaseNotes = @"
-Release of PitchGrid Mapper application
-
 ## Changes in v0.2.1
-- **Fixed:** Stop all playing notes when layout changes to prevent stuck notes
-- **Fixed:** MPE support - note-off messages now sent on correct MIDI channel
-- **Added:** Vertical skew transformations (skew up/down) for isomorphic layouts
-- **Added:** UI buttons for vertical skew controls
-- **Improved:** Thread-safe tracking of currently playing notes with channel information
+- Fixed: Stop all playing notes on layout changes to prevent stuck notes
+- Fixed: MPE support - note-off sent on correct MIDI channel
+- Added: Vertical skew transformations for isomorphic layouts
+- Improved: String-like layout colors (dark off-scale notes on device)
+- Improved: Color enum mappings now parsed from controller config
 
 ## Installation
+**Windows:** Run the installer (PitchGrid-Mapper-*-Setup.exe)
+**macOS:** Open DMG and drag to Applications
 
-### Windows
-1. Download the Windows installer (PitchGrid-Mapper-*-Setup.exe)
-2. Run the installer
-3. Follow the setup wizard
-4. Launch PitchGrid Mapper from Start Menu or Desktop
-
-### macOS
-1. Download the DMG file
-2. Open the DMG
-3. Drag PitchGrid Mapper to Applications
-4. Launch from Applications folder
-
-## Requirements
-
-### Windows
-- Windows 10 or later (64-bit)
-- PitchGrid VST plugin (for scale sync)
-- Virtual MIDI driver (e.g., loopMIDI) for MIDI routing
-
-### macOS
-- macOS 10.15 or later
-- PitchGrid VST plugin (for scale sync)
-
-## Notes
-- The installer includes all necessary dependencies
-- Configure your DAW to send MIDI from PitchGrid to PitchGrid Mapper's virtual MIDI port
+Requires PitchGrid VST plugin for scale sync.
 "@
 
 # Check if release already exists
