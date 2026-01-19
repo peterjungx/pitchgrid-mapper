@@ -18,7 +18,7 @@ params:
     values:
       0: 
         name: "Reset"
-        rgb: [0, 0, 0]
+        rgb: [null, null, null]
       1: 
         name: "Red"
         rgb: [255, 0, 0]

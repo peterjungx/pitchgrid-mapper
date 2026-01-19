@@ -72,6 +72,18 @@ class ControllerConfig:
         self.set_pad_notes_bulk: Optional[str] = self.config.get('SetPadNotesBulk')
         self.set_pad_colors_bulk: Optional[str] = self.config.get('SetPadColorsBulk')
 
+        # Color mapping (for controllers with discrete color enums like LinnStrument)
+        self.color_enum_to_rgb: Optional[Dict[int, Tuple[int, int, int]]] = None
+        if 'params' in self.config and 'color' in self.config['params']:
+            color_param = self.config['params']['color']
+            if color_param.get('type') == 'enum' and 'values' in color_param:
+                self.color_enum_to_rgb = {}
+                for enum_val, color_data in color_param['values'].items():
+                    rgb = color_data.get('rgb')
+                    if rgb and all(x is not None for x in rgb):
+                        self.color_enum_to_rgb[int(enum_val)] = tuple(rgb)
+                logger.info(f"Loaded {len(self.color_enum_to_rgb)} color enum mappings for {self.device_name}")
+
         # Note mapping functions
         self.note_to_coord_x: Optional[str] = self.config.get('noteToCoordX')
         self.note_to_coord_y: Optional[str] = self.config.get('noteToCoordY')

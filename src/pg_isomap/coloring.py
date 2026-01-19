@@ -80,25 +80,34 @@ class ScaleColoringScheme(ColoringScheme):
         mos_coord: Tuple[int, int],
         mos: sx.MOS,
         coord_to_scale_index: Dict[Tuple[int, int], int],
-        supermos: Optional[sx.MOS] = None
+        supermos: Optional[sx.MOS] = None,
+        use_dark_offscale: bool = False
     ) -> Optional[str]:
         """
         Get color based on scale role and mapping.
+
+        Args:
+            mos_coord: The (x, y) natural coordinate in MOS space
+            mos: The MOS object containing scale structure
+            coord_to_scale_index: Mapping from coordinates to scale indices
+            supermos: Optional superscale MOS object
+            use_dark_offscale: If True, use unmapped color for off-scale notes
+                              (useful for string-like layouts where all pads are mapped)
         """
 
         try:
             d = mos_coord[0] * mos.b - mos_coord[1] * mos.a + mos.mode
             is_root = d == mos.mode
-            if is_root: 
+            if is_root:
                 return self.root_color
-            
+
             is_in_scale = d >= 0 and d < mos.n0
-            if is_in_scale: 
+            if is_in_scale:
                 if mos_coord in coord_to_scale_index:
                     return self.onscale_color
                 else:
                     return self.onscale_color_unmapped
-            
+
             if supermos:
                 d_super = mos_coord[0] * supermos.b - mos_coord[1] * supermos.a + supermos.mode
                 is_in_supermos = d_super >= 0 and d_super < supermos.n0
@@ -107,10 +116,14 @@ class ScaleColoringScheme(ColoringScheme):
                         return self.onsuperscale_color
                     else:
                         return self.onsuperscale_color_unmapped
-                    
+
+            # For off-scale notes, use dark color if requested (string-like layout)
+            if use_dark_offscale:
+                return self.offscale_color_unmapped
+
             if mos_coord in coord_to_scale_index:
                 return self.offscale_color
-            
+
             return self.offscale_color_unmapped
 
         except Exception as e:

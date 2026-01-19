@@ -543,12 +543,16 @@ class PGIsomapApp:
                     # Get MOS coordinate for this pad
                     mos_coord = self.current_layout_calculator.get_mos_coordinate(x, y)
 
+                    # For string-like layouts, use dark colors for off-scale notes
+                    use_dark_offscale = (self.current_layout_config.layout_type == LayoutType.STRING_LIKE)
+
                     # Use coloring scheme to determine color
                     color = DEFAULT_COLORING_SCHEME.get_color(
                         mos_coord=mos_coord,
                         mos=self.tuning_handler.mos,
                         coord_to_scale_index=self.tuning_handler.coord_to_scale_index,
-                        supermos=None
+                        supermos=None,
+                        use_dark_offscale=use_dark_offscale
                     )
                 elif mapped_note is not None:
                     # Fallback: simple hue based on note number
@@ -771,38 +775,25 @@ class PGIsomapApp:
 
     def _rgb_to_controller_enum(self, rgb: tuple[int, int, int]) -> int:
         """
-        Convert RGB to controller-specific color enum (for LinnStrument).
+        Convert RGB to controller-specific color enum.
+
+        Uses the color enum mapping from the controller configuration YAML.
+        If no mapping is available, returns 0.
 
         Args:
             rgb: RGB tuple (0-255, 0-255, 0-255)
 
         Returns:
-            Color enum value (1-11 for LinnStrument, or 0 if not applicable)
+            Color enum value, or 0 if not applicable
         """
-        # Only LinnStrument uses color enums
-        if not self.current_controller or 'LinnStrument' not in self.current_controller.device_name:
+        if not self.current_controller or not self.current_controller.color_enum_to_rgb:
             return 0
 
-        # LinnStrument color mapping
-        LINNSTRUMENT_COLORS = {
-            (255, 0, 0): 1,      # Red
-            (255, 255, 0): 2,    # Yellow
-            (0, 255, 0): 3,      # Green
-            (0, 255, 255): 4,    # Cyan
-            (0, 0, 255): 5,      # Blue
-            (255, 0, 255): 6,    # Magenta
-            (0, 0, 0): 7,        # Off
-            (255, 255, 255): 8,  # White
-            (255, 127, 0): 9,    # Orange
-            (127, 255, 0): 10,   # Lime
-            (255, 0, 127): 11,   # Pink
-        }
-
-        # Find nearest color by Euclidean distance
+        # Find nearest color by Euclidean distance in RGB space
         min_dist = float('inf')
-        nearest_enum = 7  # Default to Off
+        nearest_enum = 0  # Default to 0 (no color)
 
-        for color_rgb, enum_val in LINNSTRUMENT_COLORS.items():
+        for enum_val, color_rgb in self.current_controller.color_enum_to_rgb.items():
             dist = sum((a - b) ** 2 for a, b in zip(rgb, color_rgb))
             if dist < min_dist:
                 min_dist = dist
