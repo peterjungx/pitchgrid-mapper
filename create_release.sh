@@ -44,10 +44,22 @@ RELEASE_NOTES="## Changes in v0.2.1
 - Improved: Color enum mappings now parsed from controller config
 
 ## Installation
-**Windows:** Run the installer (PitchGrid-Mapper-*-Setup.exe)
-**macOS:** Open DMG and drag to Applications
 
-Requires PitchGrid VST plugin for scale sync."
+### Windows
+1. Download the Windows installer (PitchGrid-Mapper-*-Setup.exe)
+2. Run the installer
+3. Follow the setup wizard
+4. Launch PitchGrid Mapper from Start Menu or Desktop
+
+### macOS
+1. Download the DMG file
+2. Open the DMG
+3. Drag PitchGrid Mapper to Applications
+4. Launch from Applications folder
+
+## Requirements
+- PitchGrid VST plugin (for scale sync)
+- Windows: Virtual MIDI driver (e.g., loopMIDI) for MIDI routing"
 
 # Check if release already exists
 echo "🔍 Checking if release v${VERSION} exists..."
