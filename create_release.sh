@@ -38,8 +38,12 @@ fi
 # Release notes
 RELEASE_NOTES="Release of PitchGrid Mapper application
 
-## Changes
-- Initial release
+## Changes in v0.2.1
+- **Fixed:** Stop all playing notes when layout changes to prevent stuck notes
+- **Fixed:** MPE support - note-off messages now sent on correct MIDI channel
+- **Added:** Vertical skew transformations (skew up/down) for isomorphic layouts
+- **Added:** UI buttons for vertical skew controls
+- **Improved:** Thread-safe tracking of currently playing notes with channel information
 
 ## Installation
 
