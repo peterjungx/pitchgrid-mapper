@@ -80,6 +80,12 @@ class MIDIHandler:
         self._color_send_generation = 0
         self._color_send_lock = threading.Lock()
 
+        # Track currently playing notes (note_number -> (logical_coord, channel))
+        # Used to send note-off messages when layout changes
+        # For MPE, we must send note-off on the same channel as note-on
+        self._playing_notes: Dict[int, Tuple[Tuple[int, int], int]] = {}
+        self._playing_notes_lock = threading.Lock()
+
     def initialize_virtual_port(self) -> bool:
         """
         Create or connect to virtual MIDI output port named 'PitchGrid Mapper'.
@@ -342,6 +348,13 @@ class MIDIHandler:
                                 except Exception as e:
                                     logger.error(f"Error in note event callback: {e}")
 
+                            # Track playing notes with channel (for MPE support)
+                            with self._playing_notes_lock:
+                                if is_note_on:
+                                    self._playing_notes[mapped_note] = (logical_coord, channel)
+                                else:
+                                    self._playing_notes.pop(mapped_note, None)
+
                             # Send remapped note
                             remapped_message = [message[0], mapped_note, velocity]
                             self.midi_out.send_message(remapped_message)
@@ -383,7 +396,7 @@ class MIDIHandler:
             logger.error(f"Error getting MIDI ports: {e}")
             return []
 
-    def send_note_on(self, note: int, velocity: int = 100, channel: int = 0):
+    def send_note_on(self, note: int, velocity: int = 100, channel: int = 0, logical_coord: Optional[Tuple[int, int]] = None):
         """
         Send a MIDI note-on message to the virtual output.
 
@@ -391,6 +404,7 @@ class MIDIHandler:
             note: MIDI note number (0-127)
             velocity: Note velocity (0-127)
             channel: MIDI channel (0-15)
+            logical_coord: Optional logical coordinate for tracking playing notes
         """
         if not self.midi_out:
             logger.warning("Cannot send note-on: virtual MIDI port not initialized")
@@ -403,6 +417,12 @@ class MIDIHandler:
         try:
             message = [NOTE_ON | channel, note, velocity]
             self.midi_out.send_message(message)
+
+            # Track playing notes with channel (for MPE support)
+            if logical_coord is not None:
+                with self._playing_notes_lock:
+                    self._playing_notes[note] = (logical_coord, channel)
+
             logger.debug(f"Sent note-on: note={note}, velocity={velocity}, channel={channel}")
         except Exception as e:
             logger.error(f"Error sending note-on: {e}")
@@ -426,9 +446,39 @@ class MIDIHandler:
         try:
             message = [NOTE_OFF | channel, note, 0]
             self.midi_out.send_message(message)
+
+            # Remove from playing notes
+            with self._playing_notes_lock:
+                self._playing_notes.pop(note, None)
+
             logger.debug(f"Sent note-off: note={note}, channel={channel}")
         except Exception as e:
             logger.error(f"Error sending note-off: {e}")
+
+    def stop_all_playing_notes(self):
+        """
+        Send note-off messages for all currently playing notes.
+
+        This should be called when the layout changes to prevent stuck notes.
+        For MPE support, note-off is sent on the same channel as note-on.
+        """
+        if not self.midi_out:
+            return
+
+        with self._playing_notes_lock:
+            # Copy the dict items (note -> (logical_coord, channel))
+            notes_to_stop = list(self._playing_notes.items())
+            self._playing_notes.clear()
+
+        if notes_to_stop:
+            logger.info(f"Stopping {len(notes_to_stop)} playing notes due to layout change")
+            for note, (logical_coord, channel) in notes_to_stop:
+                try:
+                    message = [NOTE_OFF | channel, note, 0]
+                    self.midi_out.send_message(message)
+                    logger.debug(f"Sent note-off: note={note}, channel={channel}")
+                except Exception as e:
+                    logger.error(f"Error sending note-off for note {note} on channel {channel}: {e}")
 
     def cancel_color_send(self) -> int:
         """

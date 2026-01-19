@@ -96,6 +96,14 @@
         angle = deviceXAngle;
         flipHorizontal = false;
         break;
+      case 'up':
+        angle = deviceYAngle;
+        flipHorizontal = false;
+        break;
+      case 'down':
+        angle = deviceYAngle;
+        flipHorizontal = true;
+        break;
       case 'upright':
         angle = deviceYAngle;
         flipHorizontal = false;

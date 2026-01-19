@@ -490,6 +490,12 @@
               <button class="toolbar-btn" on:click={() => handleTransformation('skew_right')} title="Skew Right">
                 <TransformIcon type="skew" direction="right" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
               </button>
+              <button class="toolbar-btn" on:click={() => handleTransformation('skew_down')} title="Skew Down">
+                <TransformIcon type="skew" direction="down" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
+              </button>
+              <button class="toolbar-btn" on:click={() => handleTransformation('skew_up')} title="Skew Up">
+                <TransformIcon type="skew" direction="up" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />
+              </button>
             {:else}
               <button class="toolbar-btn" on:click={() => handleTransformation('skew_left')} title="Skew Left">
                 <TransformIcon type="skew" direction="left" horizonToRowAngle={geometry.horizonAngle} rowToColAngle={geometry.rowToColAngle} />

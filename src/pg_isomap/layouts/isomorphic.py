@@ -91,6 +91,10 @@ class IsomorphicLayout(LayoutCalculator):
                 delta = sx.IntegerAffineTransform(1, -1, 0, 1, 0, 0)
             elif transform_type == 'skew_right':
                 delta = sx.IntegerAffineTransform(1, 1, 0, 1, 0, 0)
+            elif transform_type == 'skew_up':
+                delta = sx.IntegerAffineTransform(1, 0, -1, 1, 0, 0)
+            elif transform_type == 'skew_down':
+                delta = sx.IntegerAffineTransform(1, 0, 1, 1, 0, 0)
             elif transform_type == 'rotate_left':
                 delta = sx.IntegerAffineTransform(0, -1, 1, 0, 0, 0)
             elif transform_type == 'rotate_right':

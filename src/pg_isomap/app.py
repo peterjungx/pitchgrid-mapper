@@ -321,6 +321,9 @@ class PGIsomapApp:
             logger.warning("No controller loaded, cannot calculate layout")
             return
 
+        # Stop all playing notes before changing the layout to prevent stuck notes
+        self.midi_handler.stop_all_playing_notes()
+
         # Create layout calculator only if we don't have one or if the type changed
         needs_new_calculator = (
             self.current_layout_calculator is None or
@@ -503,7 +506,7 @@ class PGIsomapApp:
 
         # Send MIDI message
         if note_on:
-            self.midi_handler.send_note_on(note, velocity)
+            self.midi_handler.send_note_on(note, velocity, logical_coord=coord)
         else:
             self.midi_handler.send_note_off(note)
 
