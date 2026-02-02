@@ -1,6 +1,6 @@
 DeviceName: "Lumatone [untested]"
-ControllerMIDIOutput: "Lumatone MIDI"
-ControllerMIDIInput: "Lumatone MIDI"
+ControllerMIDIOutput: "Lumatone"
+ControllerMIDIInput: "Lumatone"
 isMPE: false
 hasGlobalPitchBend: true
 NumRows: 19
@@ -11,7 +11,7 @@ HorizonToRowAngle: 16.102113752
 RowToColAngle: 60.0
 xSpacing: 21.0
 ySpacing: 21.0
-MANUFACTURER_CODE: "0x00 0x21 0x50"
+MANUFACTURER_CODE: "0 0x21 0x50"
 CHANGE_KEY_NOTE: "0x00"
 SET_KEY_COLOUR: "0x01"
 boardIndex: "( x + y // 2)//6"
@@ -20,7 +20,7 @@ yB0: "y + 2 * boardIndex(x, y)"
 keyIndex: "(xB0(x,y) - 5*yB0(x,y) - (yB0(x,y)+1)//2 + 43 + (5 if yB0(x,y) == 8 else 1 if yB0(x,y) == 7 else -1 if yB0(x,y) == -1 else -5 if yB0(x,y) == -2 else 0) )%56"
 typeByte: 1
 SetPadNoteAndChannel: "240 MANUFACTURER_CODE boardIndex(x, y) CHANGE_KEY_NOTE keyIndex(x, y) noteNumber midiChannel typeByte 247"
-SetPadColor: "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR keyIndex(x, y) red green blue 247"
+SetPadColor: "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR keyIndex(x, y) {red >> 4} {red & 15} {green >> 4} {green & 15} {blue >> 4} {blue & 15} 247"
 noteAssign: "30 + keyIndex(x, y)"
 channelAssign: "boardIndex(x, y)"
 defaultIsoRootCoordinate: [11, 0]

@@ -57,8 +57,8 @@ class MIDIHandler:
 
         # Note mapping table (logical_x, logical_y) -> midi_note
         self.note_mapping: Dict[Tuple[int, int], int] = {}
-        # Reverse mapping: controller_note -> (logical_x, logical_y)
-        self.reverse_mapping: Dict[int, Tuple[int, int]] = {}
+        # Reverse mapping: (channel, controller_note) -> (logical_x, logical_y)
+        self.reverse_mapping: Dict[Tuple[int, int], Tuple[int, int]] = {}
 
         # Callback for getting scale coordinates
         self.get_scale_coord: Optional[Callable[[int, int], Optional[Tuple[int, int]]]] = None
@@ -246,14 +246,14 @@ class MIDIHandler:
     def update_note_mapping(
         self,
         mapping: Dict[Tuple[int, int], int],
-        reverse_mapping: Dict[int, Tuple[int, int]]
+        reverse_mapping: Dict[Tuple[int, int], Tuple[int, int]]
     ):
         """
         Update the note mapping table (thread-safe).
 
         Args:
             mapping: (logical_x, logical_y) -> pitchgrid_note
-            reverse_mapping: controller_note -> (logical_x, logical_y)
+            reverse_mapping: (channel, controller_note) -> (logical_x, logical_y)
         """
         self.note_mapping = mapping.copy()
         self.reverse_mapping = reverse_mapping.copy()
@@ -316,9 +316,10 @@ class MIDIHandler:
                     velocity = message[2]
                     note_type = "note_on" if status == NOTE_ON else "note_off"
 
-                    # Look up in reverse mapping
-                    if controller_note in self.reverse_mapping:
-                        logical_coord = self.reverse_mapping[controller_note]
+                    # Look up in reverse mapping using (channel, note)
+                    reverse_key = (channel, controller_note)
+                    if reverse_key in self.reverse_mapping:
+                        logical_coord = self.reverse_mapping[reverse_key]
 
                         # Get scale coordinate if callback is available (before checking if mapped)
                         scale_coord_str = "?"

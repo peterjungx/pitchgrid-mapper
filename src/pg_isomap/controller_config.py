@@ -88,6 +88,14 @@ class ControllerConfig:
         self.note_to_coord_x: Optional[str] = self.config.get('noteToCoordX')
         self.note_to_coord_y: Optional[str] = self.config.get('noteToCoordY')
         self.note_assign: Optional[str] = self.config.get('noteAssign')
+        self.channel_assign: Optional[str] = self.config.get('channelAssign')
+
+        # Helper functions defined in config (e.g., boardIndex, keyIndex for Lumatone)
+        self._helper_expressions: Dict[str, str] = {}
+        helper_keys = ['boardIndex', 'xB0', 'yB0', 'keyIndex']
+        for key in helper_keys:
+            if key in self.config:
+                self._helper_expressions[key] = self.config[key]
 
         # Generate pad coordinates
         self.pads: List[Tuple[int, int, float, float]] = self._generate_pad_coordinates()
@@ -174,6 +182,37 @@ class ControllerConfig:
             logger.error(f"Error converting note {note} to coordinates: {e}")
             return None
 
+    def _build_helper_scope(self, x: int, y: int) -> Dict:
+        """
+        Build a scope dictionary with helper functions for eval.
+
+        This creates callable functions from helper expressions defined in config
+        (e.g., boardIndex, xB0, yB0, keyIndex for Lumatone).
+        """
+        scope = {
+            'x': x,
+            'y': y,
+            'cumulativeIndex': self.cumulativeIndex,
+        }
+
+        # Create callable functions from helper expressions
+        # These need to be created in dependency order and reference each other
+        for name, expr in self._helper_expressions.items():
+            # Create a function that evaluates the expression with given x, y
+            # We need to capture the expression and scope in a closure
+            def make_helper(expr_str, current_scope):
+                def helper(hx, hy):
+                    # Build a new scope for this call with the helper's x, y
+                    helper_scope = dict(current_scope)
+                    helper_scope['x'] = hx
+                    helper_scope['y'] = hy
+                    return eval(expr_str, {"__builtins__": {}}, helper_scope)
+                return helper
+
+            scope[name] = make_helper(expr, scope)
+
+        return scope
+
     def logical_coord_to_controller_note(self, x: int, y: int) -> Optional[int]:
         """
         Calculate controller MIDI note from logical coordinate using noteAssign.
@@ -189,32 +228,49 @@ class ControllerConfig:
             return None
 
         try:
-            # Safe eval with limited scope and helper functions
-            scope = {
-                'x': x,
-                'y': y,
-                'cumulativeIndex': self.cumulativeIndex,
-            }
+            scope = self._build_helper_scope(x, y)
             note = eval(self.note_assign, {"__builtins__": {}}, scope)
-            #print(f"Calculated note {note} for logical coord ({x}, {y}) (noteAssign: {self.note_assign})")
             return int(note)
         except Exception as e:
             logger.error(f"Error calculating controller note for ({x}, {y}): {e}")
             return None
 
-    def build_controller_note_mapping(self) -> Dict[int, Tuple[int, int]]:
+    def logical_coord_to_controller_channel(self, x: int, y: int) -> int:
         """
-        Build reverse mapping from controller MIDI note to logical coordinate.
+        Calculate controller MIDI channel from logical coordinate using channelAssign.
+
+        Args:
+            x: Logical X coordinate
+            y: Logical Y coordinate
 
         Returns:
-            Dictionary mapping controller_note -> (logical_x, logical_y)
+            MIDI channel (0-15), defaults to 0 if channelAssign not defined
+        """
+        if not self.channel_assign:
+            return 0
+
+        try:
+            scope = self._build_helper_scope(x, y)
+            channel = eval(self.channel_assign, {"__builtins__": {}}, scope)
+            return int(channel)
+        except Exception as e:
+            logger.error(f"Error calculating controller channel for ({x}, {y}): {e}")
+            return 0
+
+    def build_controller_note_mapping(self) -> Dict[Tuple[int, int], Tuple[int, int]]:
+        """
+        Build reverse mapping from (channel, note) to logical coordinate.
+
+        Returns:
+            Dictionary mapping (channel, controller_note) -> (logical_x, logical_y)
         """
         reverse_mapping = {}
 
         for logical_x, logical_y, _, _ in self.pads:
             controller_note = self.logical_coord_to_controller_note(logical_x, logical_y)
+            controller_channel = self.logical_coord_to_controller_channel(logical_x, logical_y)
             if controller_note is not None and 0 <= controller_note <= 127:
-                reverse_mapping[controller_note] = (logical_x, logical_y)
+                reverse_mapping[(controller_channel, controller_note)] = (logical_x, logical_y)
 
         logger.info(f"Built controller note mapping: {len(reverse_mapping)} pads mapped")
         return reverse_mapping
