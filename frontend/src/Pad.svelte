@@ -5,7 +5,7 @@
   export let phys_y: number;  // physical y (center)
   export let shape: Array<[number, number]> = [];  // Voronoi vertices in physical coordinates
   export let isActive: boolean = false;
-  export let color: string = '#3a3a3a';
+  export let color: string = '#000000';
   export let onNoteOn: () => void = () => {};
   export let onNoteOff: () => void = () => {};
   export let midiNote: number | null | undefined = undefined;

@@ -713,13 +713,13 @@ class PGIsomapApp:
                         supermos=None,
                         use_dark_offscale=True
                     )
-                    hsl_color = device_color if device_color else 'hsl(0, 0%, 20%)'
+                    hsl_color = device_color if device_color else 'hsl(0, 0%, 0%)'
                 elif pad.get('color'):
                     # Use UI color for device
                     hsl_color = pad['color']
                 else:
-                    # Unmapped pad - use dark gray
-                    hsl_color = 'hsl(0, 0%, 20%)'
+                    # Unmapped pad - use black
+                    hsl_color = 'hsl(0, 0%, 0%)'
 
                 rgb = self._hsl_to_rgb(hsl_color)
 

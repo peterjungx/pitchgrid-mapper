@@ -77,7 +77,7 @@ class ScaleColoringScheme(ColoringScheme):
 
     def get_color(
         self,
-        mos_coord: Tuple[int, int],
+        mos_coord: Optional[Tuple[int, int]],
         mos: sx.MOS,
         coord_to_scale_index: Dict[Tuple[int, int], int],
         supermos: Optional[sx.MOS] = None,
@@ -87,13 +87,16 @@ class ScaleColoringScheme(ColoringScheme):
         Get color based on scale role and mapping.
 
         Args:
-            mos_coord: The (x, y) natural coordinate in MOS space
+            mos_coord: The (x, y) natural coordinate in MOS space, or None if pad is outside layout
             mos: The MOS object containing scale structure
             coord_to_scale_index: Mapping from coordinates to scale indices
             supermos: Optional superscale MOS object
             use_dark_offscale: If True, use unmapped color for off-scale notes
                               (useful for string-like layouts where all pads are mapped)
         """
+        # Pads with no MOS coordinate (e.g., outside piano strips) get no color
+        if mos_coord is None:
+            return None
 
         try:
             d = mos_coord[0] * mos.b - mos_coord[1] * mos.a + mos.mode
