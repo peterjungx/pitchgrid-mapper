@@ -59,6 +59,8 @@ class MIDIHandler:
         self.note_mapping: Dict[Tuple[int, int], int] = {}
         # Reverse mapping: (channel, controller_note) -> (logical_x, logical_y)
         self.reverse_mapping: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        # Whether to use incoming channel for reverse lookup (True for Lumatone, False for MPE/LinnStrument)
+        self.use_channel_for_lookup: bool = False
 
         # Callback for getting scale coordinates
         self.get_scale_coord: Optional[Callable[[int, int], Optional[Tuple[int, int]]]] = None
@@ -246,7 +248,8 @@ class MIDIHandler:
     def update_note_mapping(
         self,
         mapping: Dict[Tuple[int, int], int],
-        reverse_mapping: Dict[Tuple[int, int], Tuple[int, int]]
+        reverse_mapping: Dict[Tuple[int, int], Tuple[int, int]],
+        use_channel_for_lookup: bool = False
     ):
         """
         Update the note mapping table (thread-safe).
@@ -254,10 +257,14 @@ class MIDIHandler:
         Args:
             mapping: (logical_x, logical_y) -> pitchgrid_note
             reverse_mapping: (channel, controller_note) -> (logical_x, logical_y)
+            use_channel_for_lookup: If True, use (channel, note) for reverse lookup.
+                If False, use (0, note) for lookup (for MPE controllers where
+                the same note on any channel maps to the same pad).
         """
         self.note_mapping = mapping.copy()
         self.reverse_mapping = reverse_mapping.copy()
-        logger.debug(f"Note mapping updated: {len(mapping)} mappings")
+        self.use_channel_for_lookup = use_channel_for_lookup
+        logger.debug(f"Note mapping updated: {len(mapping)} mappings, channel_lookup={use_channel_for_lookup}")
 
     def start(self):
         """Start the MIDI processing thread."""
@@ -316,8 +323,11 @@ class MIDIHandler:
                     velocity = message[2]
                     note_type = "note_on" if status == NOTE_ON else "note_off"
 
-                    # Look up in reverse mapping using (channel, note)
-                    reverse_key = (channel, controller_note)
+                    # Look up in reverse mapping
+                    # For controllers with channelAssign (e.g., Lumatone), use incoming channel
+                    # For others (e.g., MPE controllers), use channel 0
+                    lookup_channel = channel if self.use_channel_for_lookup else 0
+                    reverse_key = (lookup_channel, controller_note)
                     if reverse_key in self.reverse_mapping:
                         logical_coord = self.reverse_mapping[reverse_key]
 
@@ -478,6 +488,45 @@ class MIDIHandler:
                     message = [NOTE_OFF | channel, note, 0]
                     self.midi_out.send_message(message)
                     logger.debug(f"Sent note-off: note={note}, channel={channel}")
+                except Exception as e:
+                    logger.error(f"Error sending note-off for note {note} on channel {channel}: {e}")
+
+    def stop_notes_with_changed_mapping(self, new_mapping: Dict[Tuple[int, int], int]):
+        """
+        Send note-off only for notes whose mapping changed under the new layout.
+
+        For each playing note, checks if its logical coordinate still maps to the
+        same MIDI note. Only sends note_off if the mapping changed or the coordinate
+        is no longer mapped.
+
+        Args:
+            new_mapping: The new (logical_x, logical_y) -> midi_note mapping
+        """
+        if not self.midi_out:
+            return
+
+        with self._playing_notes_lock:
+            notes_to_stop = []
+            notes_to_keep = {}
+
+            for old_note, (logical_coord, channel) in self._playing_notes.items():
+                new_note = new_mapping.get(logical_coord)
+                if new_note is None or new_note != old_note:
+                    # Mapping changed or coord no longer mapped - need to stop this note
+                    notes_to_stop.append((old_note, logical_coord, channel))
+                else:
+                    # Mapping unchanged - keep tracking this note
+                    notes_to_keep[old_note] = (logical_coord, channel)
+
+            self._playing_notes = notes_to_keep
+
+        if notes_to_stop:
+            logger.info(f"Stopping {len(notes_to_stop)} notes due to mapping change (keeping {len(notes_to_keep)})")
+            for note, logical_coord, channel in notes_to_stop:
+                try:
+                    message = [NOTE_OFF | channel, note, 0]
+                    self.midi_out.send_message(message)
+                    logger.debug(f"Sent note-off: note={note}, channel={channel}, coord={logical_coord}")
                 except Exception as e:
                     logger.error(f"Error sending note-off for note {note} on channel {channel}: {e}")
 

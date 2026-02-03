@@ -321,9 +321,6 @@ class PGIsomapApp:
             logger.warning("No controller loaded, cannot calculate layout")
             return
 
-        # Stop all playing notes before changing the layout to prevent stuck notes
-        self.midi_handler.stop_all_playing_notes()
-
         # Create layout calculator only if we don't have one or if the type changed
         needs_new_calculator = (
             self.current_layout_calculator is None or
@@ -377,8 +374,15 @@ class PGIsomapApp:
         # Use controller's noteAssign function
         reverse_mapping = self.current_controller.build_controller_note_mapping()
 
+        # Determine if channel should be used for reverse lookup
+        # Controllers with channelAssign (e.g., Lumatone) need channel-based lookup
+        use_channel_for_lookup = self.current_controller.channel_assign is not None
+
+        # Stop only notes whose mapping actually changed (prevents unnecessary note-offs)
+        self.midi_handler.stop_notes_with_changed_mapping(mapping)
+
         # Update MIDI handler
-        self.midi_handler.update_note_mapping(mapping, reverse_mapping)
+        self.midi_handler.update_note_mapping(mapping, reverse_mapping, use_channel_for_lookup)
 
         logger.info(
             f"Layout recalculated: {len(mapping)} mapped pads, "
