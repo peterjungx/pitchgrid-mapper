@@ -1,0 +1,61 @@
+#!/bin/bash
+# Full macOS release script - builds and notarizes both arm64 and x86_64
+# Usage: ./release_mac.sh
+
+set -e
+
+echo "=========================================="
+echo "  PitchGrid Mapper - macOS Full Release"
+echo "=========================================="
+echo ""
+
+# Load environment variables
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
+
+VERSION="${APP_VERSION:-0.1.0}"
+echo "Version: ${VERSION}"
+echo ""
+
+# Build and notarize arm64
+echo "=========================================="
+echo "  Building for Apple Silicon (arm64)"
+echo "=========================================="
+./build_app.sh --arch arm64
+
+echo ""
+echo "=========================================="
+echo "  Notarizing arm64 build"
+echo "=========================================="
+./notarize_app.sh --arch arm64
+
+# Build and notarize x86_64
+echo ""
+echo "=========================================="
+echo "  Building for Intel (x86_64)"
+echo "=========================================="
+./build_app.sh --arch x86_64
+
+echo ""
+echo "=========================================="
+echo "  Notarizing x86_64 build"
+echo "=========================================="
+./notarize_app.sh --arch x86_64
+
+# Upload to GitHub
+echo ""
+echo "=========================================="
+echo "  Creating GitHub Release"
+echo "=========================================="
+./create_release.sh
+
+echo ""
+echo "=========================================="
+echo "  Release Complete!"
+echo "=========================================="
+echo ""
+echo "DMG files created:"
+ls -la PitchGrid-Mapper-${VERSION}-*.dmg 2>/dev/null || echo "  (none found)"
