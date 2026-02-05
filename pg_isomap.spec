@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import sys
+import platform
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -11,6 +12,10 @@ codesign_identity = os.getenv('CODESIGN_IDENTITY', '')
 bundle_id = os.getenv('BUNDLE_ID', 'com.pitchgrid.isomap')
 app_name = os.getenv('APP_NAME', 'PGIsomap')
 app_version = os.getenv('APP_VERSION', '0.1.0')
+
+# Get target architecture from environment or default to native
+target_arch = os.getenv('BUILD_ARCH', platform.machine())
+print(f"Building for architecture: {target_arch}")
 
 # Get paths
 frontend_dist = 'frontend/dist'
@@ -119,7 +124,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch=target_arch,  # Use architecture from environment
     codesign_identity=None,  # We sign manually in sign_app.sh
     entitlements_file=None,
 )

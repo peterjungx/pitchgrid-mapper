@@ -1,8 +1,30 @@
 #!/bin/bash
 # Notarization script for PitchGrid Mapper
 # Requires: Apple Developer account with notarization enabled
+# Usage: ./notarize_app.sh [--arch arm64|x86_64]
 
 set -e
+
+# Parse arguments
+ARCH=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --arch)
+            ARCH="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: ./notarize_app.sh [--arch arm64|x86_64]"
+            exit 1
+            ;;
+    esac
+done
+
+# Default to native architecture if not specified
+if [ -z "$ARCH" ]; then
+    ARCH="${BUILD_ARCH:-$(uname -m)}"
+fi
 
 # Load environment variables
 if [ -f .env ]; then
@@ -16,7 +38,7 @@ APP_NAME="${APP_NAME:-PitchGrid Mapper}"
 APP_VERSION="${APP_VERSION:-0.1.0}"
 APP_PATH="dist/${APP_NAME}.app"
 DMG_NAME="${APP_NAME// /-}"  # Replace spaces with dashes for DMG filename
-DMG_PATH="${DMG_NAME}-${APP_VERSION}.dmg"
+DMG_PATH="${DMG_NAME}-${APP_VERSION}-${ARCH}.dmg"
 
 # Configuration from environment
 APPLE_ID="${APPLE_ID:-your-apple-id@email.com}"
@@ -33,7 +55,7 @@ if [[ "$APPLE_ID" == "your-apple-id@email.com" ]] || [[ "$APP_PASSWORD" == "your
     exit 1
 fi
 
-echo "🚀 Starting notarization process..."
+echo "🚀 Starting notarization process for ${ARCH}..."
 
 if [ ! -d "$APP_PATH" ]; then
     echo "❌ App not found. Run ./build_app.sh first"
