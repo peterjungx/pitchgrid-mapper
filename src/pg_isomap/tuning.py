@@ -35,6 +35,11 @@ class TuningHandler:
         self.scale: Optional[sx.Scale] = None
         self.coord_to_scale_index: dict[tuple[int, int], int] = {}
 
+        # EDO compatibility and enharmonic vector
+        self.is_edo_compatible: bool = False
+        self.edo_mos: Optional[sx.MOS] = None
+        self.enharmonic_vector: Optional[sx.Vector2i] = None
+
         # Initialize with default MOS (12-EDO chromatic)
         self._calculate_mos()
 
@@ -128,10 +133,8 @@ class TuningHandler:
                 f"{len(self.coord_to_scale_index)} mapped coordinates"
             )
 
-            # Output full scale coordinate -> index mapping
-            #logger.info("Scale coordinate to index mapping:")
-            #for coord, index in sorted(self.coord_to_scale_index.items(), key=lambda x: x[1]):
-            #    logger.info(f"  ({coord[0]:3d}, {coord[1]:3d}) -> index {index:3d}")
+            # Calculate EDO compatibility and enharmonic vector
+            self._calculate_edo_compatibility()
 
         except Exception as e:
             logger.error(f"Error calculating MOS: {e}")
@@ -141,6 +144,79 @@ class TuningHandler:
             self.coord_to_scale_index = {}
             self.scale_degrees = list(range(self.steps))
             self.L, self.s = self.steps, 0
+            self.is_edo_compatible = False
+            self.edo_mos = None
+            self.enharmonic_vector = None
+
+    def _calculate_edo_compatibility(self):
+        """
+        Check if current tuning is EDO-compatible and calculate enharmonic vector.
+
+        EDO-compatible means there exists a deeper MOS whose note count equals
+        the EDO step count (self.steps).
+        """
+        if self.mos is None:
+            self.is_edo_compatible = False
+            self.edo_mos = None
+            self.enharmonic_vector = None
+            return
+
+        # Start from current depth and search for matching EDO
+        max_search_depth = self.depth + 20  # Reasonable limit
+
+        for search_depth in range(self.depth, max_search_depth + 1):
+            try:
+                edo_mos = sx.MOS.fromG(
+                    search_depth,
+                    self.mode,
+                    self.skew,
+                    self.stretch,
+                    1  # repetitions
+                )
+
+                if edo_mos.n == self.steps:
+                    # Found EDO-compatible MOS
+                    self.is_edo_compatible = True
+                    self.edo_mos = edo_mos
+
+                    # Calculate enharmonic vector:
+                    # edo_gen_steps = edo_mos.v_gen.x + edo_mos.v_gen.y
+                    # enharmonic_vector = mos.v_gen * edo_mos.n - Vector2i(mos.a, mos.b) * edo_gen_steps
+                    edo_gen_steps = edo_mos.v_gen.x + edo_mos.v_gen.y
+
+                    # Vector arithmetic: mos.v_gen * edo_mos.n
+                    gen_scaled_x = self.mos.v_gen.x * edo_mos.n
+                    gen_scaled_y = self.mos.v_gen.y * edo_mos.n
+
+                    # Vector arithmetic: Vector2i(mos.a, mos.b) * edo_gen_steps
+                    period_scaled_x = self.mos.a * edo_gen_steps
+                    period_scaled_y = self.mos.b * edo_gen_steps
+
+                    # enharmonic_vector = gen_scaled - period_scaled
+                    self.enharmonic_vector = sx.Vector2i(
+                        gen_scaled_x - period_scaled_x,
+                        gen_scaled_y - period_scaled_y
+                    )
+
+                    logger.info(
+                        f"EDO-compatible: depth {search_depth} gives {edo_mos.n} steps, "
+                        f"enharmonic_vector=({self.enharmonic_vector.x}, {self.enharmonic_vector.y})"
+                    )
+                    return
+
+                if edo_mos.n > self.steps:
+                    # Overshot - not EDO-compatible
+                    break
+
+            except Exception as e:
+                logger.debug(f"Error checking depth {search_depth}: {e}")
+                continue
+
+        # Not EDO-compatible
+        self.is_edo_compatible = False
+        self.edo_mos = None
+        self.enharmonic_vector = None
+        logger.info(f"Not EDO-compatible: no depth gives exactly {self.steps} steps")
 
     def get_scale_system_string(self) -> str:
         """Get formatted scale system string (e.g., '5L 2s')."""
@@ -160,4 +236,9 @@ class TuningHandler:
             'steps': self.steps,
             'scale_system': self.get_scale_system_string(),
             'scale_degree_count': len(self.scale_degrees),
+            'is_edo_compatible': self.is_edo_compatible,
+            'enharmonic_vector': (
+                (self.enharmonic_vector.x, self.enharmonic_vector.y)
+                if self.enharmonic_vector else None
+            ),
         }

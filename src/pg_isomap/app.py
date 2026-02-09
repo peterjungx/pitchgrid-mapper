@@ -369,7 +369,9 @@ class PGIsomapApp:
             self.tuning_handler.scale_degrees,
             self.tuning_handler.steps,
             mos=self.tuning_handler.mos,
-            coord_to_scale_index=self.tuning_handler.coord_to_scale_index
+            coord_to_scale_index=self.tuning_handler.coord_to_scale_index,
+            enharmonic_vector=self.tuning_handler.enharmonic_vector,
+            mode_offset=self.tuning_handler.mode_offset
         )
 
         # Build reverse mapping (controller_note -> logical_coord)
@@ -546,11 +548,10 @@ class PGIsomapApp:
                 color = None
 
                 if self.current_layout_calculator and hasattr(self.current_layout_calculator, 'get_mos_coordinate'):
-                    # Get MOS coordinate for this pad
+                    # Get MOS coordinate (returns enharmonic equivalent if applicable)
                     mos_coord = self.current_layout_calculator.get_mos_coordinate(x, y)
 
                     # Use coloring scheme to determine color (for UI display)
-                    # Note: For UI, we always show the standard colors to maintain visual clarity
                     color = DEFAULT_COLORING_SCHEME.get_color(
                         mos_coord=mos_coord,
                         mos=self.tuning_handler.mos,
@@ -574,6 +575,12 @@ class PGIsomapApp:
                     except Exception as e:
                         logger.debug(f"Error getting MOS labels for {mos_coord}: {e}")
 
+                # Check if this pad was mapped via enharmonic equivalence
+                is_enharmonic = False
+                if (self.current_layout_calculator and
+                        hasattr(self.current_layout_calculator, 'enharmonic_coords')):
+                    is_enharmonic = coord in self.current_layout_calculator.enharmonic_coords
+
                 controller_pads.append({
                     'x': x,
                     'y': y,
@@ -585,6 +592,7 @@ class PGIsomapApp:
                     'mos_coord': mos_coord,
                     'mos_label_digit': mos_label_digit,
                     'mos_label_letter': mos_label_letter,
+                    'is_enharmonic': is_enharmonic,
                 })
 
         import sys
