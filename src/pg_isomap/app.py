@@ -273,6 +273,8 @@ class PGIsomapApp:
 
     def disconnect_controller(self):
         """Disconnect from current controller."""
+        # Cancel any ongoing color send before disconnecting
+        self.midi_handler.cancel_color_send()
         self.midi_handler.disconnect_controller()
         self.current_controller = None
         logger.info("Controller disconnected")
@@ -619,33 +621,61 @@ class PGIsomapApp:
         if not self.current_controller or not self.midi_handler:
             return
 
-        # Only send if template exists
-        if not self.current_controller.set_pad_notes_bulk:
-            logger.debug("No SetPadNotesBulk template, skipping controller setup")
+        # Only send if we have at least one template
+        if not (self.current_controller.set_pad_notes_bulk or self.current_controller.set_pad_note_and_channel):
+            logger.debug("No SetPadNotesBulk or SetPadNoteAndChannel template, skipping controller setup")
             return
+
+        # Check if MIDI output is available
+        if not self.midi_handler.controller_out:
+            logger.warning("_send_controller_setup: MIDI output not connected")
+            return
+
+        # Cancel any ongoing color send to prevent interleaved messages
+        self.midi_handler.cancel_color_send()
 
         try:
             from .midi_setup import MIDITemplateBuilder
 
-            # Build list of pads with their controller notes
+            # Build list of pads with their controller notes and channels
             pads = []
             for logical_x, logical_y, _, _ in self.current_controller.pads:
                 controller_note = self.current_controller.logical_coord_to_controller_note(logical_x, logical_y)
                 if controller_note is not None:
+                    # Use channelAssign if defined, otherwise default to channel 0
+                    controller_channel = self.current_controller.logical_coord_to_controller_channel(logical_x, logical_y)
                     pads.append({
                         'x': logical_x,
                         'y': logical_y,
                         'noteNumber': controller_note,
-                        'midiChannel': 0
+                        'midiChannel': controller_channel
                     })
 
             # Build and send MIDI message
             builder = MIDITemplateBuilder(self.current_controller)
-            midi_bytes = builder.set_pad_notes_bulk(pads)
+            delay_ms = self.current_controller.message_delay_ms
 
-            if midi_bytes:
-                self.midi_handler.send_raw_bytes(midi_bytes)
-                logger.info(f"Sent SetPadNotesBulk: {len(pads)} pads, {len(midi_bytes)} bytes")
+            # Prefer bulk if available
+            if self.current_controller.set_pad_notes_bulk:
+                midi_bytes = builder.set_pad_notes_bulk(pads)
+                if midi_bytes:
+                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms)
+                    logger.info(f"Sent SetPadNotesBulk: {len(pads)} pads, {len(midi_bytes)} bytes")
+
+            # Fallback to individual messages - collect all and send together
+            # so delay between messages is properly applied
+            elif self.current_controller.set_pad_note_and_channel:
+                all_midi_bytes = []
+                for pad in pads:
+                    midi_bytes = builder.set_pad_note_and_channel(
+                        pad['x'], pad['y'],
+                        pad['noteNumber'], pad['midiChannel']
+                    )
+                    if midi_bytes:
+                        all_midi_bytes.extend(midi_bytes)
+                if all_midi_bytes:
+                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms)
+                    logger.info(f"Sent SetPadNoteAndChannel for {len(pads)} pads ({len(all_midi_bytes)} bytes)")
 
         except Exception as e:
             logger.error(f"Error sending controller setup: {e}", exc_info=True)
@@ -738,15 +768,20 @@ class PGIsomapApp:
             # Build and send MIDI message
             builder = MIDITemplateBuilder(self.current_controller)
 
+            # Get controller's configured message delay
+            delay_ms = self.current_controller.message_delay_ms
+
             # Prefer bulk if available
             if self.current_controller.set_pad_colors_bulk:
                 midi_bytes = builder.set_pad_colors_bulk(pads_with_colors)
                 if midi_bytes:
-                    self.midi_handler.send_raw_bytes(midi_bytes, generation=generation)
+                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms, generation=generation)
                     logger.info(f"Sent SetPadColorsBulk: {len(pads_with_colors)} pads, {len(midi_bytes)} bytes")
 
-            # Fallback to individual messages
+            # Fallback to individual messages - collect all and send together
+            # so delay between messages is properly applied
             elif self.current_controller.set_pad_color:
+                all_midi_bytes = []
                 for pad in pads_with_colors:
                     midi_bytes = builder.set_pad_color(
                         pad['x'], pad['y'],
@@ -754,8 +789,10 @@ class PGIsomapApp:
                         pad['color']
                     )
                     if midi_bytes:
-                        self.midi_handler.send_raw_bytes(midi_bytes, generation=generation)
-                logger.info(f"Sent SetPadColor for {len(pads_with_colors)} pads individually")
+                        all_midi_bytes.extend(midi_bytes)
+                if all_midi_bytes:
+                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms, generation=generation)
+                    logger.info(f"Sent SetPadColor for {len(pads_with_colors)} pads ({len(all_midi_bytes)} bytes)")
 
         except Exception as e:
             logger.error(f"Error sending pad colors: {e}", exc_info=True)

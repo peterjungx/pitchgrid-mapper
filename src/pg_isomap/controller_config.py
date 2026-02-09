@@ -72,6 +72,10 @@ class ControllerConfig:
         self.set_pad_notes_bulk: Optional[str] = self.config.get('SetPadNotesBulk')
         self.set_pad_colors_bulk: Optional[str] = self.config.get('SetPadColorsBulk')
 
+        # Message timing - delay between consecutive MIDI messages (in milliseconds)
+        # Default is 1.5ms, but some controllers (like Lumatone) need longer delays
+        self.message_delay_ms: float = self.config.get('MessageDelayMs', 1.5)
+
         # Color mapping (for controllers with discrete color enums like LinnStrument)
         self.color_enum_to_rgb: Optional[Dict[int, Tuple[int, int, int]]] = None
         if 'params' in self.config and 'color' in self.config['params']:
