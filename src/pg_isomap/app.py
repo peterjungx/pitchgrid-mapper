@@ -736,8 +736,13 @@ class PGIsomapApp:
             status = self.get_status()
             controller_pads = status.get('controller_pads', [])
 
-            # For string-like layouts, recalculate colors with dark off-scale for device
-            use_dark_offscale = (self.current_layout_config.layout_type == LayoutType.STRING_LIKE)
+            # For string-like layouts and EDO-compatible isomorphic layouts,
+            # recalculate colors with dark off-scale for device
+            use_dark_offscale = (
+                self.current_layout_config.layout_type == LayoutType.STRING_LIKE or
+                (self.current_layout_config.layout_type == LayoutType.ISOMORPHIC and
+                 self.tuning_handler.is_edo_compatible)
+            )
 
             # Build pad data with RGB colors for ALL pads
             pads_with_colors = []
