@@ -7,12 +7,16 @@ low-latency MIDI message passing and note remapping.
 
 import logging
 import queue
+import re
 import threading
 import time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import rtmidi
 from rtmidi.midiconstants import NOTE_OFF, NOTE_ON
+
+if TYPE_CHECKING:
+    from .controller_config import ACKMessagingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +85,11 @@ class MIDIHandler:
         # Color send cancellation
         self._color_send_generation = 0
         self._color_send_lock = threading.Lock()
+
+        # ACK-based messaging support
+        self._ack_response_queue: queue.Queue = queue.Queue(maxsize=100)
+        self._waiting_for_ack = False
+        self._ack_lock = threading.Lock()
 
         # Track currently playing notes (note_number -> (logical_coord, channel))
         # Used to send note-off messages when layout changes
@@ -238,6 +247,15 @@ class MIDIHandler:
     def _midi_callback(self, event, data=None):
         """MIDI input callback - runs in rtmidi's thread."""
         message, deltatime = event
+
+        # Check if this is a SysEx response and we're waiting for ACK
+        if message and message[0] == 0xF0 and self._waiting_for_ack:
+            try:
+                self._ack_response_queue.put_nowait(message)
+                logger.debug(f"ACK response received: {' '.join(f'{b:02X}' for b in message[:20])}")
+                return  # Don't process SysEx responses through normal path
+            except queue.Full:
+                logger.warning("ACK response queue full, dropping response")
 
         # Put message in queue for processing thread
         try:
@@ -541,7 +559,162 @@ class MIDIHandler:
             self._color_send_generation += 1
             return self._color_send_generation
 
-    def send_raw_bytes(self, data: List[int], delay_ms: float = 1.5, generation: Optional[int] = None):
+    def send_with_ack(
+        self,
+        data: List[int],
+        ack_config: "ACKMessagingConfig",
+        response_wildcard_position: int = 5,
+        generation: Optional[int] = None
+    ) -> bool:
+        """
+        Send MIDI messages with ACK-based flow control.
+
+        Each SysEx message is sent and we wait for an ACK response before
+        sending the next message. Non-SysEx messages are sent without waiting.
+
+        Args:
+            data: List of MIDI bytes to send (may contain multiple messages)
+            ack_config: ACK messaging configuration with response types and timeout
+            response_wildcard_position: Position in SysEx data where response type is found
+                                        (default 5, after F0 + 3 mfr bytes + board + cmd)
+            generation: If provided, the send will be cancelled if the generation number
+                        has changed (indicating a newer send operation has started)
+
+        Returns:
+            True if all messages sent successfully, False if aborted or timed out
+        """
+        if not self.controller_out:
+            logger.warning("Cannot send MIDI to controller: no output port connected")
+            return False
+
+        if not data:
+            return True
+
+        try:
+            # Parse MIDI stream into individual messages
+            messages = self._parse_midi_messages(data)
+
+            for i, msg in enumerate(messages):
+                # Check for cancellation if generation is provided
+                if generation is not None:
+                    with self._color_send_lock:
+                        if self._color_send_generation != generation:
+                            logger.debug(f"ACK send cancelled (generation {generation} != {self._color_send_generation})")
+                            return False
+
+                # For SysEx messages, use ACK-based sending
+                if msg and msg[0] == 0xF0:
+                    result = self._send_single_with_ack(msg, ack_config, response_wildcard_position)
+                    if not result:
+                        logger.warning(f"ACK send aborted at message {i+1}/{len(messages)}")
+                        return False
+                else:
+                    # Non-SysEx messages sent without ACK
+                    self.controller_out.send_message(msg)
+
+            logger.debug(f"Sent {len(messages)} message(s) with ACK ({len(data)} bytes total)")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error in ACK-based send: {e}")
+            return False
+
+    def _send_single_with_ack(
+        self,
+        msg: List[int],
+        ack_config: "ACKMessagingConfig",
+        response_wildcard_position: int
+    ) -> bool:
+        """
+        Send a single SysEx message and wait for ACK response.
+
+        Args:
+            msg: The SysEx message to send
+            ack_config: ACK messaging configuration
+            response_wildcard_position: Position in SysEx data where response type is found
+
+        Returns:
+            True if ACK received (action='next'), False if aborted or timed out
+        """
+        max_retries = 10  # Prevent infinite retry loops
+        retries = 0
+
+        while retries < max_retries:
+            # Clear the response queue before sending
+            while not self._ack_response_queue.empty():
+                try:
+                    self._ack_response_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+            # Start listening for ACK
+            with self._ack_lock:
+                self._waiting_for_ack = True
+
+            try:
+                # Send the message
+                self.controller_out.send_message(msg)
+
+                # Wait for response
+                timeout_seconds = ack_config.timeout_ms / 1000.0
+                try:
+                    response = self._ack_response_queue.get(timeout=timeout_seconds)
+
+                    # Extract response type from the wildcard position
+                    # Response format: F0 <mfr 3 bytes> <board> <cmd> <status> ... F7
+                    # The position is in the SysEx data (after F0)
+                    if len(response) > response_wildcard_position:
+                        response_value = response[response_wildcard_position]
+                        action = ack_config.get_action_for_value(response_value)
+
+                        if action is None:
+                            logger.warning(f"Unknown ACK response value: 0x{response_value:02X}")
+                            return False
+
+                        if action == 'next':
+                            return True  # Success, proceed to next message
+
+                        elif action == 'abort':
+                            logger.warning(f"ACK response indicates abort (value=0x{response_value:02X})")
+                            return False
+
+                        elif action.startswith('delay('):
+                            # Parse delay time from "delay(500)"
+                            match = re.match(r'delay\((\d+)\)', action)
+                            if match:
+                                delay_ms = int(match.group(1))
+                                logger.debug(f"ACK response indicates busy, retrying after {delay_ms}ms")
+                                time.sleep(delay_ms / 1000.0)
+                                retries += 1
+                                continue  # Retry the same message
+                            else:
+                                logger.warning(f"Invalid delay action format: {action}")
+                                return False
+                        else:
+                            logger.warning(f"Unknown action: {action}")
+                            return False
+                    else:
+                        logger.warning(f"Response too short to extract status byte")
+                        return False
+
+                except queue.Empty:
+                    logger.warning(f"ACK timeout after {ack_config.timeout_ms}ms")
+                    return False
+
+            finally:
+                with self._ack_lock:
+                    self._waiting_for_ack = False
+
+        logger.warning(f"Max retries ({max_retries}) exceeded for ACK-based send")
+        return False
+
+    def send_raw_bytes(
+        self,
+        data: List[int],
+        delay_ms: float = 1.5,
+        generation: Optional[int] = None,
+        ack_config: Optional["ACKMessagingConfig"] = None
+    ):
         """
         Send arbitrary MIDI message bytes TO THE CONTROLLER.
 
@@ -552,17 +725,26 @@ class MIDIHandler:
         - Multiple channel messages: parsed and sent separately respecting MIDI boundaries
         - Single messages: sent as-is
 
+        If ack_config is provided, uses ACK-based sending for reliable communication.
+        Otherwise, uses delay-based sending.
+
         Args:
             data: List of MIDI bytes to send
             delay_ms: Delay in milliseconds between consecutive messages (default 1.5ms)
             generation: If provided, the send will be cancelled if the generation number
                         has changed (indicating a newer send operation has started)
+            ack_config: If provided, uses ACK-based sending instead of delay-based
         """
         if not self.controller_out:
             logger.warning("Cannot send MIDI to controller: no output port connected")
             return
 
         if not data:
+            return
+
+        # Use ACK-based sending if config is provided
+        if ack_config is not None:
+            self.send_with_ack(data, ack_config, generation=generation)
             return
 
         try:

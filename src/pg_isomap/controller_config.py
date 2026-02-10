@@ -7,13 +7,36 @@ Loads YAML configuration files for different isomorphic controllers.
 import logging
 import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import yaml
 from scipy.spatial import Voronoi
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ACKResponseType:
+    """Represents a possible response type in ACK-based messaging."""
+    name: str
+    value: int
+    action: str  # 'abort', 'next', or 'delay(ms)'
+
+
+@dataclass
+class ACKMessagingConfig:
+    """Configuration for ACK-based MIDI messaging."""
+    timeout_ms: int = 2000
+    response_types: List[ACKResponseType] = field(default_factory=list)
+
+    def get_action_for_value(self, value: int) -> Optional[str]:
+        """Get the action for a given response value."""
+        for rt in self.response_types:
+            if rt.value == value:
+                return rt.action
+        return None
 
 
 class ControllerConfig:
@@ -75,6 +98,31 @@ class ControllerConfig:
         # Message timing - delay between consecutive MIDI messages (in milliseconds)
         # Default is 1.5ms, but some controllers (like Lumatone) need longer delays
         self.message_delay_ms: float = self.config.get('MessageDelayMs', 1.5)
+
+        # ACK-based messaging configuration (for controllers like Lumatone)
+        self.ack_messaging: Optional[ACKMessagingConfig] = None
+        self.set_pad_color_response: Optional[str] = self.config.get('SetPadColorResponse')
+        self.set_pad_note_and_channel_response: Optional[str] = self.config.get('SetPadNoteAndChannelResponse')
+
+        if 'ACKBasedMIDIMessaging' in self.config:
+            ack_config = self.config['ACKBasedMIDIMessaging']
+            timeout = ack_config.get('Timeout', 2000)
+            response_types = []
+            for rt in ack_config.get('ResponseTypes', []):
+                # Parse value - handle hex strings like "0x01"
+                value = rt.get('Value', 0)
+                if isinstance(value, str):
+                    value = int(value, 0)  # Auto-detect base (handles 0x prefix)
+                response_types.append(ACKResponseType(
+                    name=rt.get('Name', ''),
+                    value=value,
+                    action=rt.get('Action', 'abort')
+                ))
+            self.ack_messaging = ACKMessagingConfig(
+                timeout_ms=timeout,
+                response_types=response_types
+            )
+            logger.info(f"Loaded ACK messaging config for {self.device_name}: timeout={timeout}ms, {len(response_types)} response types")
 
         # Color mapping (for controllers with discrete color enums like LinnStrument)
         self.color_enum_to_rgb: Optional[Dict[int, Tuple[int, int, int]]] = None

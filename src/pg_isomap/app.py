@@ -662,12 +662,13 @@ class PGIsomapApp:
             # Build and send MIDI message
             builder = MIDITemplateBuilder(self.current_controller)
             delay_ms = self.current_controller.message_delay_ms
+            ack_config = self.current_controller.ack_messaging
 
             # Prefer bulk if available
             if self.current_controller.set_pad_notes_bulk:
                 midi_bytes = builder.set_pad_notes_bulk(pads)
                 if midi_bytes:
-                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms)
+                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms, ack_config=ack_config)
                     logger.info(f"Sent SetPadNotesBulk: {len(pads)} pads, {len(midi_bytes)} bytes")
 
             # Fallback to individual messages - collect all and send together
@@ -682,7 +683,7 @@ class PGIsomapApp:
                     if midi_bytes:
                         all_midi_bytes.extend(midi_bytes)
                 if all_midi_bytes:
-                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms)
+                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms, ack_config=ack_config)
                     logger.info(f"Sent SetPadNoteAndChannel for {len(pads)} pads ({len(all_midi_bytes)} bytes)")
 
         except Exception as e:
@@ -781,14 +782,15 @@ class PGIsomapApp:
             # Build and send MIDI message
             builder = MIDITemplateBuilder(self.current_controller)
 
-            # Get controller's configured message delay
+            # Get controller's configured message delay and ACK config
             delay_ms = self.current_controller.message_delay_ms
+            ack_config = self.current_controller.ack_messaging
 
             # Prefer bulk if available
             if self.current_controller.set_pad_colors_bulk:
                 midi_bytes = builder.set_pad_colors_bulk(pads_with_colors)
                 if midi_bytes:
-                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms, generation=generation)
+                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms, generation=generation, ack_config=ack_config)
                     logger.info(f"Sent SetPadColorsBulk: {len(pads_with_colors)} pads, {len(midi_bytes)} bytes")
 
             # Fallback to individual messages - collect all and send together
@@ -804,7 +806,7 @@ class PGIsomapApp:
                     if midi_bytes:
                         all_midi_bytes.extend(midi_bytes)
                 if all_midi_bytes:
-                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms, generation=generation)
+                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms, generation=generation, ack_config=ack_config)
                     logger.info(f"Sent SetPadColor for {len(pads_with_colors)} pads ({len(all_midi_bytes)} bytes)")
 
         except Exception as e:

@@ -3,7 +3,7 @@ ControllerMIDIOutput: "Lumatone"
 ControllerMIDIInput: "Lumatone"
 # Delay between consecutive MIDI messages in milliseconds
 # Lumatone needs longer delays for SysEx processing
-MessageDelayMs: 3.0
+MessageDelayMs: 5.0
 isMPE: false
 hasGlobalPitchBend: true
 NumRows: 19
@@ -27,3 +27,26 @@ SetPadColor: "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR keyIndex(x, 
 noteAssign: "30 + keyIndex(x, y)"
 channelAssign: "boardIndex(x, y) - 1"
 defaultIsoRootCoordinate: [11, 0]
+# ACK-based MIDI messaging for reliable communication
+# The Lumatone requires each SysEx message to be acknowledged before sending the next
+ACKBasedMIDIMessaging:
+  Timeout: 2000  # ms to wait for response before giving up
+  ResponseTypes:
+    - Name: NACK
+      Value: 0x00
+      Action: abort
+    - Name: ACK
+      Value: 0x01
+      Action: next
+    - Name: BUSY
+      Value: 0x02
+      Action: "delay(500)"
+    - Name: ERROR
+      Value: 0x03
+      Action: abort
+    - Name: STATE
+      Value: 0x04
+      Action: abort
+# Response templates - MIDI_RESPONSE_TYPE is the wildcard that matches any response type
+SetPadColorResponse: "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR MIDI_RESPONSE_TYPE 247"
+SetPadNoteAndChannelResponse: "240 MANUFACTURER_CODE boardIndex(x, y) CHANGE_KEY_NOTE MIDI_RESPONSE_TYPE 247"
