@@ -73,7 +73,7 @@ Additional controllers can be added via YAML configuration files.
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/peterjungx/pitchgrid-mapper.git
+   git clone https://github.com/pitchgrid-io/pitchgrid-mapper.git
    cd pitchgrid-mapper
    ```
 
@@ -261,7 +261,7 @@ All threads communicate via thread-safe queues and atomic operations. The MIDI t
 
 ## Scalatrix Integration
 
-The application depends on the [scalatrix](../scalatrix) library for scale theory. To build with scalatrix:
+The application depends on the [scalatrix](https://github.com/pitchgrid-io/scalatrix) library for scale theory. To build with scalatrix:
 
 ```bash
 # Build scalatrix with Python bindings
@@ -307,7 +307,7 @@ Contributions welcome! Please:
 
 ## Related Projects
 
-- [pitchgrid-plugin](../pitchgrid-plugin) - PitchGrid VST plugin
-- [pg_linn_companion](../pg_linn_companion) - LinnStrument-specific companion (predecessor)
-- [scalatrix](../scalatrix) - Scale theory library (C++ with Python bindings)
-- [PitchGridRack](../PitchGridRack) - Exquis isomorphic layout reference implementation
+- [pitchgrid-plugin](https://github.com/pitchgrid-io/pitchgrid-plugin) - PitchGrid VST plugin
+- [pg_linn_companion](https://github.com/pitchgrid-io/pg_linn_companion) - LinnStrument-specific companion (predecessor)
+- [scalatrix](https://github.com/pitchgrid-io/scalatrix) - Scale theory library (C++ with Python bindings)
+- [PitchGridRack](https://github.com/pitchgrid-io/PitchGridRack) - Exquis isomorphic layout reference implementation
