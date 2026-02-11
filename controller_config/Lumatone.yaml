@@ -29,6 +29,7 @@ channelAssign: "boardIndex(x, y) - 1"
 defaultIsoRootCoordinate: [11, 0]
 # ACK-based MIDI messaging for reliable communication
 # The Lumatone requires each SysEx message to be acknowledged before sending the next
+# ResponsePosition is auto-detected from SetPadColorResponse and SetPadNoteAndChannelResponse templates
 ACKBasedMIDIMessaging:
   Timeout: 2000  # ms to wait for response before giving up
   ResponseTypes:

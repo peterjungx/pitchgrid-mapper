@@ -161,16 +161,40 @@ class DesktopApp:
 
 def main():
     """Main entry point for desktop app."""
-    # Setup logging
+    # Setup logging to both console and file
+    from pathlib import Path
+    import logging.handlers
+
+    # Create log directory in user's home
+    log_dir = Path.home() / ".pitchgrid-mapper" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "pitchgrid-mapper.log"
+
+    # File handler with rotation (keep last 5 log files, max 10MB each)
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=10*1024*1024, backupCount=5
+    )
+    file_handler.setLevel(logging.DEBUG)  # Always log everything to file
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG if settings.debug else logging.WARNING)
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+
     logging.basicConfig(
-        level=logging.DEBUG if settings.debug else logging.WARNING,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ],
+        level=logging.DEBUG,  # Root level DEBUG, handlers filter
+        handlers=[console_handler, file_handler],
     )
 
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
+    logger.info(f"=" * 80)
+    logger.info(f"LOG FILE LOCATION: {log_file}")
+    logger.info(f"=" * 80)
 
     # Create and run desktop app
     app = DesktopApp()

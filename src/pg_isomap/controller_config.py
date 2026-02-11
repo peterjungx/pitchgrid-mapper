@@ -17,6 +17,54 @@ from scipy.spatial import Voronoi
 logger = logging.getLogger(__name__)
 
 
+def find_midi_response_type_position(template: str) -> Optional[int]:
+    """
+    Parse a MIDI response template and find the byte position of MIDI_RESPONSE_TYPE.
+
+    Args:
+        template: Template string like "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR MIDI_RESPONSE_TYPE 247"
+
+    Returns:
+        The byte position where MIDI_RESPONSE_TYPE appears, or None if not found
+    """
+    if not template or 'MIDI_RESPONSE_TYPE' not in template:
+        return None
+
+    # First, handle function calls with spaces by collapsing them
+    # e.g., "boardIndex(x, y)" might be split as "boardIndex(x," and "y)"
+    # We need to combine these back together
+    import re
+    # Replace "func(x, y)" patterns with "func(...)" to avoid space splitting issues
+    normalized = re.sub(r'\w+\([^)]+\)', 'FUNC_CALL', template)
+
+    tokens = normalized.split()
+    position = 0
+
+    for token in tokens:
+        if token == 'MIDI_RESPONSE_TYPE':
+            return position
+        # Count how many bytes this token represents
+        # Tokens can be: numbers, hex (0x...), multi-byte constants, or function calls
+        if token.startswith('{') and token.endswith('}'):
+            # Expression like {red >> 4} - counts as 1 byte
+            position += 1
+        elif token == 'FUNC_CALL':
+            # Function call placeholder - counts as 1 byte
+            position += 1
+        elif token.isdigit() or token.startswith('0x'):
+            # Single byte number
+            position += 1
+        else:
+            # Named constant - need to count how many bytes it represents
+            # Multi-byte constants like MANUFACTURER_CODE need special handling
+            if token == 'MANUFACTURER_CODE':
+                position += 3  # Lumatone manufacturer code is 3 bytes: 00 21 50
+            else:
+                position += 1
+
+    return None
+
+
 @dataclass
 class ACKResponseType:
     """Represents a possible response type in ACK-based messaging."""
@@ -29,6 +77,7 @@ class ACKResponseType:
 class ACKMessagingConfig:
     """Configuration for ACK-based MIDI messaging."""
     timeout_ms: int = 2000
+    response_position: int = 5  # Default position in SysEx response where status byte is found
     response_types: List[ACKResponseType] = field(default_factory=list)
 
     def get_action_for_value(self, value: int) -> Optional[str]:
@@ -107,6 +156,19 @@ class ControllerConfig:
         if 'ACKBasedMIDIMessaging' in self.config:
             ack_config = self.config['ACKBasedMIDIMessaging']
             timeout = ack_config.get('Timeout', 2000)
+
+            # Auto-detect response position from SetPadColorResponse or SetPadNoteAndChannelResponse template
+            response_position = None
+            if self.set_pad_color_response:
+                response_position = find_midi_response_type_position(self.set_pad_color_response)
+            if response_position is None and self.set_pad_note_and_channel_response:
+                response_position = find_midi_response_type_position(self.set_pad_note_and_channel_response)
+
+            # Fallback to manual config or default
+            if response_position is None:
+                response_position = ack_config.get('ResponsePosition', 5)
+                logger.warning(f"Could not auto-detect MIDI_RESPONSE_TYPE position, using {response_position}")
+
             response_types = []
             for rt in ack_config.get('ResponseTypes', []):
                 # Parse value - handle hex strings like "0x01"
@@ -120,9 +182,10 @@ class ControllerConfig:
                 ))
             self.ack_messaging = ACKMessagingConfig(
                 timeout_ms=timeout,
+                response_position=response_position,
                 response_types=response_types
             )
-            logger.info(f"Loaded ACK messaging config for {self.device_name}: timeout={timeout}ms, {len(response_types)} response types")
+            logger.info(f"Loaded ACK messaging config for {self.device_name}: timeout={timeout}ms, response_pos={response_position}, {len(response_types)} response types")
 
         # Color mapping (for controllers with discrete color enums like LinnStrument)
         self.color_enum_to_rgb: Optional[Dict[int, Tuple[int, int, int]]] = None
