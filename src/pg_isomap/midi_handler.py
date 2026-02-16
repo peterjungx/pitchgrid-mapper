@@ -191,6 +191,9 @@ class MIDIHandler:
                 in_port_index = in_ports.index(matched_port_name)
 
                 self.midi_in.open_port(in_port_index)
+                # Enable SysEx reception (rtmidi filters SysEx by default!)
+                # Required for ACK-based messaging with controllers like Lumatone
+                self.midi_in.ignore_types(sysex=False, timing=True, active_sense=True)
                 self.midi_in.set_callback(self._midi_callback)
                 self.controller_port = self.midi_in
                 self.connected_port_name = matched_port_name
