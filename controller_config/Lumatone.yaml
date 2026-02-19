@@ -51,3 +51,26 @@ ACKBasedMIDIMessaging:
 # Response templates - MIDI_RESPONSE_TYPE is the wildcard that matches any response type
 SetPadColorResponse: "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR MIDI_RESPONSE_TYPE 247"
 SetPadNoteAndChannelResponse: "240 MANUFACTURER_CODE boardIndex(x, y) CHANGE_KEY_NOTE MIDI_RESPONSE_TYPE 247"
+# Dynamic UI options - these appear as toggles/sliders in the app when Lumatone is selected
+INVERT_SUSTAIN_PEDAL: "0x45"
+INVERT_FOOT_CONTROLLER: "0x04"
+SET_FOOT_CONTROLLER_SENSITIVITY: "0x03"
+DynamicUIOptions:
+  - label: "Invert Sustain Pedal"
+    name: INVERT_SUSTAIN
+    type: bool
+    default: true
+  - label: "Invert Expression Pedal"
+    name: INVERT_EXPRESSION
+    type: bool
+    default: false
+  - label: "Expression Sensitivity"
+    name: EXPR_SENSITIVITY
+    type: int
+    min: 0
+    max: 127
+    default: 64
+ControllerSetupCommands:
+  - "240 MANUFACTURER_CODE 0 INVERT_SUSTAIN_PEDAL {INVERT_SUSTAIN} 247"
+  - "240 MANUFACTURER_CODE 0 INVERT_FOOT_CONTROLLER {INVERT_EXPRESSION} 247"
+  - "240 MANUFACTURER_CODE 0 SET_FOOT_CONTROLLER_SENSITIVITY {EXPR_SENSITIVITY} 247"

@@ -24,6 +24,7 @@ from .layouts import (
 )
 from .midi_handler import MIDIHandler
 from .osc_handler import OSCHandler
+from .preferences import ControllerPreferences
 from .tuning import TuningHandler
 
 import scalatrix as sx
@@ -49,6 +50,10 @@ class PGIsomapApp:
         self.current_controller: Optional[ControllerConfig] = None
         self.current_layout_config: LayoutConfig = LayoutConfig(layout_type=LayoutType.ISOMORPHIC)
         self.current_layout_calculator: Optional[LayoutCalculator] = None
+
+        # Dynamic option values for current controller (e.g. {"INVERT_SUSTAIN": True})
+        self.preferences = ControllerPreferences()
+        self._dynamic_option_values: dict = {}
 
         # WebAPI reference (set by WebAPI after initialization)
         self.web_api = None
@@ -259,11 +264,17 @@ class PGIsomapApp:
         # Update current controller
         self.current_controller = config
 
+        # Load dynamic option values (saved prefs merged with YAML defaults)
+        self._load_dynamic_option_values()
+
         # Reset layout calculator to default when changing controllers
         self.current_layout_calculator = None
 
         # Send controller setup messages
         self._send_controller_setup()
+
+        # Send dynamic setup commands (pedal polarity, etc.)
+        self._send_controller_setup_commands()
 
         # Recalculate layout
         self._recalculate_layout()
@@ -278,6 +289,92 @@ class PGIsomapApp:
         self.midi_handler.disconnect_controller()
         self.current_controller = None
         logger.info("Controller disconnected")
+
+    def _load_dynamic_option_values(self):
+        """Load dynamic option values for current controller from preferences, filling defaults."""
+        if not self.current_controller:
+            self._dynamic_option_values = {}
+            return
+
+        saved = self.preferences.get_option_values(self.current_controller.device_name)
+        values = {}
+        for opt in self.current_controller.dynamic_ui_options:
+            if opt.name in saved:
+                values[opt.name] = saved[opt.name]
+            else:
+                values[opt.name] = opt.default
+        self._dynamic_option_values = values
+
+    def set_dynamic_option(self, name: str, value) -> bool:
+        """Set a dynamic option value and re-send setup commands to the controller."""
+        if not self.current_controller:
+            return False
+
+        # Find the option definition for validation
+        opt_def = None
+        for opt in self.current_controller.dynamic_ui_options:
+            if opt.name == name:
+                opt_def = opt
+                break
+        if opt_def is None:
+            logger.warning(f"Unknown dynamic option: {name}")
+            return False
+
+        # Validate and coerce
+        if opt_def.type == 'bool':
+            value = bool(value)
+        elif opt_def.type == 'int':
+            value = int(value)
+            if opt_def.min_val is not None:
+                value = max(opt_def.min_val, value)
+            if opt_def.max_val is not None:
+                value = min(opt_def.max_val, value)
+
+        self._dynamic_option_values[name] = value
+        self.preferences.set_option_value(self.current_controller.device_name, name, value)
+
+        # Re-send setup commands to controller
+        self._send_controller_setup_commands()
+
+        # Broadcast updated status to UI
+        if self.web_api:
+            self.web_api.broadcast_status_update()
+
+        return True
+
+    def _send_controller_setup_commands(self):
+        """Evaluate and send ControllerSetupCommands using current dynamic option values."""
+        if not self.current_controller or not self.midi_handler.controller_out:
+            return
+        if not self.current_controller.controller_setup_commands:
+            return
+
+        from .midi_setup import MIDITemplateBuilder
+
+        builder = MIDITemplateBuilder(self.current_controller)
+        delay_ms = self.current_controller.message_delay_ms
+        ack_config = self.current_controller.ack_messaging
+
+        # Build substitution kwargs: convert bool->int (0/1) for MIDI bytes
+        kwargs = {}
+        for name, value in dict(self._dynamic_option_values).items():
+            if isinstance(value, bool):
+                kwargs[name] = 1 if value else 0
+            else:
+                kwargs[name] = int(value)
+
+        all_bytes = []
+        for template in self.current_controller.controller_setup_commands:
+            try:
+                midi_bytes = builder.build_midi_message(template, **kwargs)
+                if midi_bytes:
+                    all_bytes.extend(midi_bytes)
+            except Exception as e:
+                logger.error(f"Error building setup command '{template}': {e}")
+
+        if all_bytes:
+            self.midi_handler.send_raw_bytes(all_bytes, delay_ms=delay_ms, ack_config=ack_config)
+            logger.info(f"Sent {len(self.current_controller.controller_setup_commands)} controller setup commands ({len(all_bytes)} bytes)")
 
     def update_layout_config(self, config: LayoutConfig):
         """Update layout configuration and recalculate."""
@@ -605,6 +702,20 @@ class PGIsomapApp:
                 'row_to_col_angle': self.current_controller.row_to_col_angle,
             }
 
+        # Dynamic UI options for current controller
+        dynamic_ui_options = []
+        if self.current_controller:
+            for opt in self.current_controller.dynamic_ui_options:
+                dynamic_ui_options.append({
+                    'label': opt.label,
+                    'name': opt.name,
+                    'type': opt.type,
+                    'default': opt.default,
+                    'min': opt.min_val,
+                    'max': opt.max_val,
+                    'value': self._dynamic_option_values.get(opt.name, opt.default),
+                })
+
         return {
             'connected_controller': self.current_controller.device_name if self.current_controller else None,
             'midi_connected': self.midi_handler.is_controller_connected(),
@@ -622,6 +733,7 @@ class PGIsomapApp:
                 'notes_remapped': self.midi_handler.notes_remapped,
             },
             'platform': sys.platform,  # 'win32', 'darwin', 'linux'
+            'dynamic_ui_options': dynamic_ui_options,
         }
 
     def _send_controller_setup(self):

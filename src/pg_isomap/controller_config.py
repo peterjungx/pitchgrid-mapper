@@ -66,6 +66,17 @@ def find_midi_response_type_position(template: str) -> Optional[int]:
 
 
 @dataclass
+class DynamicUIOption:
+    """A dynamic UI option defined in controller config YAML."""
+    label: str
+    name: str          # Variable name used in ControllerSetupCommands, e.g. "INVERT_SUSTAIN"
+    type: str          # "bool" or "int"
+    default: Any       # Default value
+    min_val: Optional[int] = None  # For int type
+    max_val: Optional[int] = None  # For int type
+
+
+@dataclass
 class ACKResponseType:
     """Represents a possible response type in ACK-based messaging."""
     name: str
@@ -212,11 +223,26 @@ class ControllerConfig:
             if key in self.config:
                 self._helper_expressions[key] = self.config[key]
 
+        # Dynamic UI options (defined in YAML, rendered in frontend)
+        self.dynamic_ui_options: List[DynamicUIOption] = []
+        for opt_data in self.config.get('DynamicUIOptions', []):
+            opt_type = opt_data.get('type', 'bool')
+            self.dynamic_ui_options.append(DynamicUIOption(
+                label=opt_data['label'],
+                name=opt_data['name'],
+                type=opt_type,
+                default=opt_data.get('default', False if opt_type == 'bool' else 0),
+                min_val=opt_data.get('min') if opt_type == 'int' else None,
+                max_val=opt_data.get('max') if opt_type == 'int' else None,
+            ))
+
+        # Controller setup commands (templates with {OPTION_NAME} placeholders)
+        self.controller_setup_commands: List[str] = self.config.get('ControllerSetupCommands', [])
+
         # Generate pad coordinates
         self.pads: List[Tuple[int, int, float, float]] = self._generate_pad_coordinates()
         # Calculate cumulative indices
         self.cumulative_index_by_pad_coord: Dict[Tuple[int, int], int] = {(x,y):idx for idx, (x, y, _, _) in enumerate(self.pads)}
-
 
         # Calculate Voronoi shapes for each pad
         self.pad_shapes: Dict[Tuple[int, int], List[Tuple[float, float]]] = (
