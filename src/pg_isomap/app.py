@@ -24,6 +24,7 @@ from .layouts import (
 )
 from .midi_handler import MIDIHandler
 from .osc_handler import OSCHandler
+from .preferences import ControllerPreferences
 from .tuning import TuningHandler
 
 import scalatrix as sx
@@ -49,6 +50,10 @@ class PGIsomapApp:
         self.current_controller: Optional[ControllerConfig] = None
         self.current_layout_config: LayoutConfig = LayoutConfig(layout_type=LayoutType.ISOMORPHIC)
         self.current_layout_calculator: Optional[LayoutCalculator] = None
+
+        # Dynamic option values for current controller (e.g. {"INVERT_SUSTAIN": True})
+        self.preferences = ControllerPreferences()
+        self._dynamic_option_values: dict = {}
 
         # WebAPI reference (set by WebAPI after initialization)
         self.web_api = None
@@ -259,11 +264,17 @@ class PGIsomapApp:
         # Update current controller
         self.current_controller = config
 
+        # Load dynamic option values (saved prefs merged with YAML defaults)
+        self._load_dynamic_option_values()
+
         # Reset layout calculator to default when changing controllers
         self.current_layout_calculator = None
 
         # Send controller setup messages
         self._send_controller_setup()
+
+        # Send dynamic setup commands (pedal polarity, etc.)
+        self._send_controller_setup_commands()
 
         # Recalculate layout
         self._recalculate_layout()
@@ -273,9 +284,97 @@ class PGIsomapApp:
 
     def disconnect_controller(self):
         """Disconnect from current controller."""
+        # Cancel any ongoing color send before disconnecting
+        self.midi_handler.cancel_color_send()
         self.midi_handler.disconnect_controller()
         self.current_controller = None
         logger.info("Controller disconnected")
+
+    def _load_dynamic_option_values(self):
+        """Load dynamic option values for current controller from preferences, filling defaults."""
+        if not self.current_controller:
+            self._dynamic_option_values = {}
+            return
+
+        saved = self.preferences.get_option_values(self.current_controller.device_name)
+        values = {}
+        for opt in self.current_controller.dynamic_ui_options:
+            if opt.name in saved:
+                values[opt.name] = saved[opt.name]
+            else:
+                values[opt.name] = opt.default
+        self._dynamic_option_values = values
+
+    def set_dynamic_option(self, name: str, value) -> bool:
+        """Set a dynamic option value and re-send setup commands to the controller."""
+        if not self.current_controller:
+            return False
+
+        # Find the option definition for validation
+        opt_def = None
+        for opt in self.current_controller.dynamic_ui_options:
+            if opt.name == name:
+                opt_def = opt
+                break
+        if opt_def is None:
+            logger.warning(f"Unknown dynamic option: {name}")
+            return False
+
+        # Validate and coerce
+        if opt_def.type == 'bool':
+            value = bool(value)
+        elif opt_def.type == 'int':
+            value = int(value)
+            if opt_def.min_val is not None:
+                value = max(opt_def.min_val, value)
+            if opt_def.max_val is not None:
+                value = min(opt_def.max_val, value)
+
+        self._dynamic_option_values[name] = value
+        self.preferences.set_option_value(self.current_controller.device_name, name, value)
+
+        # Re-send setup commands to controller
+        self._send_controller_setup_commands()
+
+        # Broadcast updated status to UI
+        if self.web_api:
+            self.web_api.broadcast_status_update()
+
+        return True
+
+    def _send_controller_setup_commands(self):
+        """Evaluate and send ControllerSetupCommands using current dynamic option values."""
+        if not self.current_controller or not self.midi_handler.controller_out:
+            return
+        if not self.current_controller.controller_setup_commands:
+            return
+
+        from .midi_setup import MIDITemplateBuilder
+
+        builder = MIDITemplateBuilder(self.current_controller)
+        delay_ms = self.current_controller.message_delay_ms
+        ack_config = self.current_controller.ack_messaging
+
+        # Build substitution kwargs: convert bool->int (0/1) for MIDI bytes
+        kwargs = {}
+        for name, value in dict(self._dynamic_option_values).items():
+            if isinstance(value, bool):
+                kwargs[name] = 1 if value else 0
+            else:
+                kwargs[name] = int(value)
+
+        all_bytes = []
+        for template in self.current_controller.controller_setup_commands:
+            try:
+                midi_bytes = builder.build_midi_message(template, **kwargs)
+                if midi_bytes:
+                    all_bytes.extend(midi_bytes)
+            except Exception as e:
+                logger.error(f"Error building setup command '{template}': {e}")
+
+        if all_bytes:
+            self.midi_handler.send_raw_bytes(all_bytes, delay_ms=delay_ms, ack_config=ack_config)
+            logger.info(f"Sent {len(self.current_controller.controller_setup_commands)} controller setup commands ({len(all_bytes)} bytes)")
 
     def update_layout_config(self, config: LayoutConfig):
         """Update layout configuration and recalculate."""
@@ -367,7 +466,9 @@ class PGIsomapApp:
             self.tuning_handler.scale_degrees,
             self.tuning_handler.steps,
             mos=self.tuning_handler.mos,
-            coord_to_scale_index=self.tuning_handler.coord_to_scale_index
+            coord_to_scale_index=self.tuning_handler.coord_to_scale_index,
+            enharmonic_vector=self.tuning_handler.enharmonic_vector,
+            mode_offset=self.tuning_handler.mode_offset
         )
 
         # Build reverse mapping (controller_note -> logical_coord)
@@ -544,11 +645,10 @@ class PGIsomapApp:
                 color = None
 
                 if self.current_layout_calculator and hasattr(self.current_layout_calculator, 'get_mos_coordinate'):
-                    # Get MOS coordinate for this pad
+                    # Get MOS coordinate (returns enharmonic equivalent if applicable)
                     mos_coord = self.current_layout_calculator.get_mos_coordinate(x, y)
 
                     # Use coloring scheme to determine color (for UI display)
-                    # Note: For UI, we always show the standard colors to maintain visual clarity
                     color = DEFAULT_COLORING_SCHEME.get_color(
                         mos_coord=mos_coord,
                         mos=self.tuning_handler.mos,
@@ -572,6 +672,12 @@ class PGIsomapApp:
                     except Exception as e:
                         logger.debug(f"Error getting MOS labels for {mos_coord}: {e}")
 
+                # Check if this pad was mapped via enharmonic equivalence
+                is_enharmonic = False
+                if (self.current_layout_calculator and
+                        hasattr(self.current_layout_calculator, 'enharmonic_coords')):
+                    is_enharmonic = coord in self.current_layout_calculator.enharmonic_coords
+
                 controller_pads.append({
                     'x': x,
                     'y': y,
@@ -583,6 +689,7 @@ class PGIsomapApp:
                     'mos_coord': mos_coord,
                     'mos_label_digit': mos_label_digit,
                     'mos_label_letter': mos_label_letter,
+                    'is_enharmonic': is_enharmonic,
                 })
 
         import sys
@@ -594,6 +701,20 @@ class PGIsomapApp:
                 'horizon_to_row_angle': self.current_controller.horizon_to_row_angle,
                 'row_to_col_angle': self.current_controller.row_to_col_angle,
             }
+
+        # Dynamic UI options for current controller
+        dynamic_ui_options = []
+        if self.current_controller:
+            for opt in self.current_controller.dynamic_ui_options:
+                dynamic_ui_options.append({
+                    'label': opt.label,
+                    'name': opt.name,
+                    'type': opt.type,
+                    'default': opt.default,
+                    'min': opt.min_val,
+                    'max': opt.max_val,
+                    'value': self._dynamic_option_values.get(opt.name, opt.default),
+                })
 
         return {
             'connected_controller': self.current_controller.device_name if self.current_controller else None,
@@ -612,6 +733,7 @@ class PGIsomapApp:
                 'notes_remapped': self.midi_handler.notes_remapped,
             },
             'platform': sys.platform,  # 'win32', 'darwin', 'linux'
+            'dynamic_ui_options': dynamic_ui_options,
         }
 
     def _send_controller_setup(self):
@@ -619,33 +741,62 @@ class PGIsomapApp:
         if not self.current_controller or not self.midi_handler:
             return
 
-        # Only send if template exists
-        if not self.current_controller.set_pad_notes_bulk:
-            logger.debug("No SetPadNotesBulk template, skipping controller setup")
+        # Only send if we have at least one template
+        if not (self.current_controller.set_pad_notes_bulk or self.current_controller.set_pad_note_and_channel):
+            logger.debug("No SetPadNotesBulk or SetPadNoteAndChannel template, skipping controller setup")
             return
+
+        # Check if MIDI output is available
+        if not self.midi_handler.controller_out:
+            logger.warning("_send_controller_setup: MIDI output not connected")
+            return
+
+        # Cancel any ongoing color send to prevent interleaved messages
+        self.midi_handler.cancel_color_send()
 
         try:
             from .midi_setup import MIDITemplateBuilder
 
-            # Build list of pads with their controller notes
+            # Build list of pads with their controller notes and channels
             pads = []
             for logical_x, logical_y, _, _ in self.current_controller.pads:
                 controller_note = self.current_controller.logical_coord_to_controller_note(logical_x, logical_y)
                 if controller_note is not None:
+                    # Use channelAssign if defined, otherwise default to channel 0
+                    controller_channel = self.current_controller.logical_coord_to_controller_channel(logical_x, logical_y)
                     pads.append({
                         'x': logical_x,
                         'y': logical_y,
                         'noteNumber': controller_note,
-                        'midiChannel': 0
+                        'midiChannel': controller_channel
                     })
 
             # Build and send MIDI message
             builder = MIDITemplateBuilder(self.current_controller)
-            midi_bytes = builder.set_pad_notes_bulk(pads)
+            delay_ms = self.current_controller.message_delay_ms
+            ack_config = self.current_controller.ack_messaging
 
-            if midi_bytes:
-                self.midi_handler.send_raw_bytes(midi_bytes)
-                logger.info(f"Sent SetPadNotesBulk: {len(pads)} pads, {len(midi_bytes)} bytes")
+            # Prefer bulk if available
+            if self.current_controller.set_pad_notes_bulk:
+                midi_bytes = builder.set_pad_notes_bulk(pads)
+                if midi_bytes:
+                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms, ack_config=ack_config)
+                    logger.info(f"Sent SetPadNotesBulk: {len(pads)} pads, {len(midi_bytes)} bytes")
+
+            # Fallback to individual messages - collect all and send together
+            # so delay between messages is properly applied
+            elif self.current_controller.set_pad_note_and_channel:
+                all_midi_bytes = []
+                for pad in pads:
+                    midi_bytes = builder.set_pad_note_and_channel(
+                        pad['x'], pad['y'],
+                        pad['noteNumber'], pad['midiChannel']
+                    )
+                    if midi_bytes:
+                        all_midi_bytes.extend(midi_bytes)
+                if all_midi_bytes:
+                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms, ack_config=ack_config)
+                    logger.info(f"Sent SetPadNoteAndChannel for {len(pads)} pads ({len(all_midi_bytes)} bytes)")
 
         except Exception as e:
             logger.error(f"Error sending controller setup: {e}", exc_info=True)
@@ -698,8 +849,13 @@ class PGIsomapApp:
             status = self.get_status()
             controller_pads = status.get('controller_pads', [])
 
-            # For string-like layouts, recalculate colors with dark off-scale for device
-            use_dark_offscale = (self.current_layout_config.layout_type == LayoutType.STRING_LIKE)
+            # For string-like layouts and EDO-compatible isomorphic layouts,
+            # recalculate colors with dark off-scale for device
+            use_dark_offscale = (
+                self.current_layout_config.layout_type == LayoutType.STRING_LIKE or
+                (self.current_layout_config.layout_type == LayoutType.ISOMORPHIC and
+                 self.tuning_handler.is_edo_compatible)
+            )
 
             # Build pad data with RGB colors for ALL pads
             pads_with_colors = []
@@ -738,15 +894,21 @@ class PGIsomapApp:
             # Build and send MIDI message
             builder = MIDITemplateBuilder(self.current_controller)
 
+            # Get controller's configured message delay and ACK config
+            delay_ms = self.current_controller.message_delay_ms
+            ack_config = self.current_controller.ack_messaging
+
             # Prefer bulk if available
             if self.current_controller.set_pad_colors_bulk:
                 midi_bytes = builder.set_pad_colors_bulk(pads_with_colors)
                 if midi_bytes:
-                    self.midi_handler.send_raw_bytes(midi_bytes, generation=generation)
+                    self.midi_handler.send_raw_bytes(midi_bytes, delay_ms=delay_ms, generation=generation, ack_config=ack_config)
                     logger.info(f"Sent SetPadColorsBulk: {len(pads_with_colors)} pads, {len(midi_bytes)} bytes")
 
-            # Fallback to individual messages
+            # Fallback to individual messages - collect all and send together
+            # so delay between messages is properly applied
             elif self.current_controller.set_pad_color:
+                all_midi_bytes = []
                 for pad in pads_with_colors:
                     midi_bytes = builder.set_pad_color(
                         pad['x'], pad['y'],
@@ -754,8 +916,10 @@ class PGIsomapApp:
                         pad['color']
                     )
                     if midi_bytes:
-                        self.midi_handler.send_raw_bytes(midi_bytes, generation=generation)
-                logger.info(f"Sent SetPadColor for {len(pads_with_colors)} pads individually")
+                        all_midi_bytes.extend(midi_bytes)
+                if all_midi_bytes:
+                    self.midi_handler.send_raw_bytes(all_midi_bytes, delay_ms=delay_ms, generation=generation, ack_config=ack_config)
+                    logger.info(f"Sent SetPadColor for {len(pads_with_colors)} pads ({len(all_midi_bytes)} bytes)")
 
         except Exception as e:
             logger.error(f"Error sending pad colors: {e}", exc_info=True)

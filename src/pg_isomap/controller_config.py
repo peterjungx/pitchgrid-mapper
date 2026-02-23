@@ -7,13 +7,96 @@ Loads YAML configuration files for different isomorphic controllers.
 import logging
 import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import yaml
 from scipy.spatial import Voronoi
 
 logger = logging.getLogger(__name__)
+
+
+def find_midi_response_type_position(template: str) -> Optional[int]:
+    """
+    Parse a MIDI response template and find the byte position of MIDI_RESPONSE_TYPE.
+
+    Args:
+        template: Template string like "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR MIDI_RESPONSE_TYPE 247"
+
+    Returns:
+        The byte position where MIDI_RESPONSE_TYPE appears, or None if not found
+    """
+    if not template or 'MIDI_RESPONSE_TYPE' not in template:
+        return None
+
+    # First, handle function calls with spaces by collapsing them
+    # e.g., "boardIndex(x, y)" might be split as "boardIndex(x," and "y)"
+    # We need to combine these back together
+    import re
+    # Replace "func(x, y)" patterns with "func(...)" to avoid space splitting issues
+    normalized = re.sub(r'\w+\([^)]+\)', 'FUNC_CALL', template)
+
+    tokens = normalized.split()
+    position = 0
+
+    for token in tokens:
+        if token == 'MIDI_RESPONSE_TYPE':
+            return position
+        # Count how many bytes this token represents
+        # Tokens can be: numbers, hex (0x...), multi-byte constants, or function calls
+        if token.startswith('{') and token.endswith('}'):
+            # Expression like {red >> 4} - counts as 1 byte
+            position += 1
+        elif token == 'FUNC_CALL':
+            # Function call placeholder - counts as 1 byte
+            position += 1
+        elif token.isdigit() or token.startswith('0x'):
+            # Single byte number
+            position += 1
+        else:
+            # Named constant - need to count how many bytes it represents
+            # Multi-byte constants like MANUFACTURER_CODE need special handling
+            if token == 'MANUFACTURER_CODE':
+                position += 3  # Lumatone manufacturer code is 3 bytes: 00 21 50
+            else:
+                position += 1
+
+    return None
+
+
+@dataclass
+class DynamicUIOption:
+    """A dynamic UI option defined in controller config YAML."""
+    label: str
+    name: str          # Variable name used in ControllerSetupCommands, e.g. "INVERT_SUSTAIN"
+    type: str          # "bool" or "int"
+    default: Any       # Default value
+    min_val: Optional[int] = None  # For int type
+    max_val: Optional[int] = None  # For int type
+
+
+@dataclass
+class ACKResponseType:
+    """Represents a possible response type in ACK-based messaging."""
+    name: str
+    value: int
+    action: str  # 'abort', 'next', or 'delay(ms)'
+
+
+@dataclass
+class ACKMessagingConfig:
+    """Configuration for ACK-based MIDI messaging."""
+    timeout_ms: int = 2000
+    response_position: int = 5  # Default position in SysEx response where status byte is found
+    response_types: List[ACKResponseType] = field(default_factory=list)
+
+    def get_action_for_value(self, value: int) -> Optional[str]:
+        """Get the action for a given response value."""
+        for rt in self.response_types:
+            if rt.value == value:
+                return rt.action
+        return None
 
 
 class ControllerConfig:
@@ -72,6 +155,49 @@ class ControllerConfig:
         self.set_pad_notes_bulk: Optional[str] = self.config.get('SetPadNotesBulk')
         self.set_pad_colors_bulk: Optional[str] = self.config.get('SetPadColorsBulk')
 
+        # Message timing - delay between consecutive MIDI messages (in milliseconds)
+        # Default is 1.5ms, but some controllers (like Lumatone) need longer delays
+        self.message_delay_ms: float = self.config.get('MessageDelayMs', 1.5)
+
+        # ACK-based messaging configuration (for controllers like Lumatone)
+        self.ack_messaging: Optional[ACKMessagingConfig] = None
+        self.set_pad_color_response: Optional[str] = self.config.get('SetPadColorResponse')
+        self.set_pad_note_and_channel_response: Optional[str] = self.config.get('SetPadNoteAndChannelResponse')
+
+        if 'ACKBasedMIDIMessaging' in self.config:
+            ack_config = self.config['ACKBasedMIDIMessaging']
+            timeout = ack_config.get('Timeout', 2000)
+
+            # Auto-detect response position from SetPadColorResponse or SetPadNoteAndChannelResponse template
+            response_position = None
+            if self.set_pad_color_response:
+                response_position = find_midi_response_type_position(self.set_pad_color_response)
+            if response_position is None and self.set_pad_note_and_channel_response:
+                response_position = find_midi_response_type_position(self.set_pad_note_and_channel_response)
+
+            # Fallback to manual config or default
+            if response_position is None:
+                response_position = ack_config.get('ResponsePosition', 5)
+                logger.warning(f"Could not auto-detect MIDI_RESPONSE_TYPE position, using {response_position}")
+
+            response_types = []
+            for rt in ack_config.get('ResponseTypes', []):
+                # Parse value - handle hex strings like "0x01"
+                value = rt.get('Value', 0)
+                if isinstance(value, str):
+                    value = int(value, 0)  # Auto-detect base (handles 0x prefix)
+                response_types.append(ACKResponseType(
+                    name=rt.get('Name', ''),
+                    value=value,
+                    action=rt.get('Action', 'abort')
+                ))
+            self.ack_messaging = ACKMessagingConfig(
+                timeout_ms=timeout,
+                response_position=response_position,
+                response_types=response_types
+            )
+            logger.info(f"Loaded ACK messaging config for {self.device_name}: timeout={timeout}ms, response_pos={response_position}, {len(response_types)} response types")
+
         # Color mapping (for controllers with discrete color enums like LinnStrument)
         self.color_enum_to_rgb: Optional[Dict[int, Tuple[int, int, int]]] = None
         if 'params' in self.config and 'color' in self.config['params']:
@@ -97,11 +223,26 @@ class ControllerConfig:
             if key in self.config:
                 self._helper_expressions[key] = self.config[key]
 
+        # Dynamic UI options (defined in YAML, rendered in frontend)
+        self.dynamic_ui_options: List[DynamicUIOption] = []
+        for opt_data in self.config.get('DynamicUIOptions', []):
+            opt_type = opt_data.get('type', 'bool')
+            self.dynamic_ui_options.append(DynamicUIOption(
+                label=opt_data['label'],
+                name=opt_data['name'],
+                type=opt_type,
+                default=opt_data.get('default', False if opt_type == 'bool' else 0),
+                min_val=opt_data.get('min') if opt_type == 'int' else None,
+                max_val=opt_data.get('max') if opt_type == 'int' else None,
+            ))
+
+        # Controller setup commands (templates with {OPTION_NAME} placeholders)
+        self.controller_setup_commands: List[str] = self.config.get('ControllerSetupCommands', [])
+
         # Generate pad coordinates
         self.pads: List[Tuple[int, int, float, float]] = self._generate_pad_coordinates()
         # Calculate cumulative indices
         self.cumulative_index_by_pad_coord: Dict[Tuple[int, int], int] = {(x,y):idx for idx, (x, y, _, _) in enumerate(self.pads)}
-
 
         # Calculate Voronoi shapes for each pad
         self.pad_shapes: Dict[Tuple[int, int], List[Tuple[float, float]]] = (

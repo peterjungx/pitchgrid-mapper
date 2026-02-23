@@ -17,6 +17,16 @@
     mos_label_letter?: string | null;
   }
 
+  interface DynamicUIOption {
+    label: string;
+    name: string;
+    type: 'bool' | 'int';
+    default: boolean | number;
+    min?: number | null;
+    max?: number | null;
+    value: boolean | number;
+  }
+
   interface AppStatus {
     connected_controller: string | null;
     midi_connected: boolean;
@@ -47,6 +57,7 @@
       notes_remapped: number;
     };
     platform: string;  // 'win32', 'darwin', 'linux'
+    dynamic_ui_options: DynamicUIOption[];
   }
 
   let ws: WebSocket | null = null;
@@ -122,6 +133,22 @@
     // If it's a physical controller and it's available, also connect via MIDI
     if (controllerName !== 'Computer Keyboard' && isControllerAvailable(controllerName)) {
       await connectController(controllerName);
+    }
+  }
+
+  async function handleDynamicOptionChange(name: string, value: boolean | number) {
+    try {
+      const response = await fetch('/api/controllers/set_option', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, value }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        console.error('Failed to set option:', name);
+      }
+    } catch (error) {
+      console.error('Error setting dynamic option:', error);
     }
   }
 
@@ -421,6 +448,36 @@
           <option value="device_coords">Device Coordinates</option>
         </select>
       </div>
+
+      <!-- Dynamic controller options (defined in YAML config) -->
+      {#if status.dynamic_ui_options && status.dynamic_ui_options.length > 0}
+        <div class="dynamic-options">
+          {#each status.dynamic_ui_options as opt}
+            {#if opt.type === 'bool'}
+              <label class="option-toggle">
+                <input
+                  type="checkbox"
+                  checked={!!opt.value}
+                  on:change={(e) => handleDynamicOptionChange(opt.name, e.currentTarget.checked)}
+                />
+                {opt.label}
+              </label>
+            {:else if opt.type === 'int'}
+              <label class="option-slider">
+                {opt.label}:
+                <input
+                  type="range"
+                  min={opt.min ?? 0}
+                  max={opt.max ?? 127}
+                  value={opt.value}
+                  on:change={(e) => handleDynamicOptionChange(opt.name, parseInt(e.currentTarget.value))}
+                />
+                <span class="option-value">{opt.value}</span>
+              </label>
+            {/if}
+          {/each}
+        </div>
+      {/if}
 
       <!-- Transformation Toolbar (for isomorphic layout) -->
       {#if status.layout_type === 'isomorphic'}
@@ -761,6 +818,47 @@
 
   .controller-selector label {
     font-weight: 500;
+  }
+
+  .dynamic-options {
+    display: flex;
+    gap: 1.5em;
+    align-items: center;
+    padding: 0.4em 0.75em;
+    background-color: rgba(155, 126, 255, 0.05);
+    border-radius: 4px;
+    margin-bottom: 0.75em;
+    flex-wrap: wrap;
+  }
+
+  .option-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: 0.9em;
+    cursor: pointer;
+  }
+
+  .option-toggle input[type="checkbox"] {
+    accent-color: #9b7eff;
+  }
+
+  .option-slider {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    font-size: 0.9em;
+  }
+
+  .option-slider input[type="range"] {
+    width: 100px;
+    accent-color: #9b7eff;
+  }
+
+  .option-value {
+    min-width: 2em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 
   select {

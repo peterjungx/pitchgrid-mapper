@@ -352,3 +352,22 @@ class MIDITemplateBuilder:
 
         template = self.controller_config.set_pad_color
         return self.build_midi_message(template, x=x, y=y, red=red, green=green, blue=blue, color=color)
+
+    def set_pad_note_and_channel(self, x: int, y: int, noteNumber: int, midiChannel: int) -> Optional[List[int]]:
+        """
+        Build individual SetPadNoteAndChannel message for one pad.
+
+        Args:
+            x: Logical X coordinate
+            y: Logical Y coordinate
+            noteNumber: MIDI note number to assign (0-127)
+            midiChannel: MIDI channel to assign (0-15)
+
+        Returns:
+            MIDI message bytes or None if template not defined
+        """
+        if not self.controller_config.set_pad_note_and_channel:
+            return None
+
+        template = self.controller_config.set_pad_note_and_channel
+        return self.build_midi_message(template, x=x, y=y, noteNumber=noteNumber, midiChannel=midiChannel)

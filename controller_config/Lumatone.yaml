@@ -1,6 +1,9 @@
 DeviceName: "Lumatone [untested]"
 ControllerMIDIOutput: "Lumatone"
 ControllerMIDIInput: "Lumatone"
+# Delay between consecutive MIDI messages in milliseconds
+# Lumatone needs longer delays for SysEx processing
+MessageDelayMs: 5.0
 isMPE: false
 hasGlobalPitchBend: true
 NumRows: 19
@@ -14,13 +17,60 @@ ySpacing: 21.0
 MANUFACTURER_CODE: "0 0x21 0x50"
 CHANGE_KEY_NOTE: "0x00"
 SET_KEY_COLOUR: "0x01"
-boardIndex: "( x + y // 2)//6"
-xB0: "x - 7 * boardIndex(x, y)"
-yB0: "y + 2 * boardIndex(x, y)"
+boardIndex: "(( x + y // 2)//6) + 1"
+xB0: "x - 7 * (boardIndex(x, y) - 1)"
+yB0: "y + 2 * (boardIndex(x, y) - 1)"
 keyIndex: "(xB0(x,y) - 5*yB0(x,y) - (yB0(x,y)+1)//2 + 43 + (5 if yB0(x,y) == 8 else 1 if yB0(x,y) == 7 else -1 if yB0(x,y) == -1 else -5 if yB0(x,y) == -2 else 0) )%56"
 typeByte: 1
 SetPadNoteAndChannel: "240 MANUFACTURER_CODE boardIndex(x, y) CHANGE_KEY_NOTE keyIndex(x, y) noteNumber midiChannel typeByte 247"
 SetPadColor: "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR keyIndex(x, y) {red >> 4} {red & 15} {green >> 4} {green & 15} {blue >> 4} {blue & 15} 247"
 noteAssign: "30 + keyIndex(x, y)"
-channelAssign: "boardIndex(x, y)"
+channelAssign: "boardIndex(x, y) - 1"
 defaultIsoRootCoordinate: [11, 0]
+# ACK-based MIDI messaging for reliable communication
+# The Lumatone requires each SysEx message to be acknowledged before sending the next
+# ResponsePosition is auto-detected from SetPadColorResponse and SetPadNoteAndChannelResponse templates
+ACKBasedMIDIMessaging:
+  Timeout: 2000  # ms to wait for response before giving up
+  ResponseTypes:
+    - Name: NACK
+      Value: 0x00
+      Action: abort
+    - Name: ACK
+      Value: 0x01
+      Action: next
+    - Name: BUSY
+      Value: 0x02
+      Action: "delay(500)"
+    - Name: ERROR
+      Value: 0x03
+      Action: abort
+    - Name: STATE
+      Value: 0x04
+      Action: abort
+# Response templates - MIDI_RESPONSE_TYPE is the wildcard that matches any response type
+SetPadColorResponse: "240 MANUFACTURER_CODE boardIndex(x, y) SET_KEY_COLOUR MIDI_RESPONSE_TYPE 247"
+SetPadNoteAndChannelResponse: "240 MANUFACTURER_CODE boardIndex(x, y) CHANGE_KEY_NOTE MIDI_RESPONSE_TYPE 247"
+# Dynamic UI options - these appear as toggles/sliders in the app when Lumatone is selected
+INVERT_SUSTAIN_PEDAL: "0x45"
+INVERT_FOOT_CONTROLLER: "0x04"
+SET_FOOT_CONTROLLER_SENSITIVITY: "0x03"
+DynamicUIOptions:
+  - label: "Invert Sustain Pedal"
+    name: INVERT_SUSTAIN
+    type: bool
+    default: true
+  - label: "Invert Expression Pedal"
+    name: INVERT_EXPRESSION
+    type: bool
+    default: false
+  - label: "Expression Sensitivity"
+    name: EXPR_SENSITIVITY
+    type: int
+    min: 0
+    max: 127
+    default: 64
+ControllerSetupCommands:
+  - "240 MANUFACTURER_CODE 0 INVERT_SUSTAIN_PEDAL {INVERT_SUSTAIN} 247"
+  - "240 MANUFACTURER_CODE 0 INVERT_FOOT_CONTROLLER {INVERT_EXPRESSION} 247"
+  - "240 MANUFACTURER_CODE 0 SET_FOOT_CONTROLLER_SENSITIVITY {EXPR_SENSITIVITY} 247"

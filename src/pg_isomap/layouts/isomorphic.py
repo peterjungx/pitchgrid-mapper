@@ -10,6 +10,41 @@ from .base import LayoutCalculator, LayoutConfig
 logger = logging.getLogger(__name__)
 
 
+def vector_mod(v: Tuple[int, int], v_n: Tuple[int, int], v_m: Tuple[int, int],
+               offset: int = 0) -> Tuple[int, int]:
+    """
+    Project a vector into the fundamental band defined by v_n and v_m.
+
+    This reduces a MOS coordinate to its enharmonic equivalent in the
+    fundamental band (the region where coordinates are actually mapped).
+
+    Args:
+        v: The MOS coordinate to reduce
+        v_n: The period vector (mos.a, mos.b)
+        v_m: The enharmonic vector
+        offset: Mode offset for the reduction
+
+    Returns:
+        The reduced MOS coordinate in the fundamental band
+    """
+    # det(A,B) = A_x * B_y - A_y * B_x
+    det_v = v_n[0] * v[1] - v_n[1] * v[0]
+    det_m = v_n[0] * v_m[1] - v_n[1] * v_m[0]
+
+    if det_m == 0:
+        # v_n and v_m are parallel - can't reduce
+        return v
+
+    # floor((det_v + offset) / det_m)
+    k = (det_v - offset) // det_m
+
+    # Subtract the multiple of v_m
+    vr_x = v[0] - k * v_m[0]
+    vr_y = v[1] - k * v_m[1]
+
+    return (vr_x, vr_y)
+
+
 class IsomorphicLayout(LayoutCalculator):
     """
     Fully isomorphic layout calculator.
@@ -158,7 +193,9 @@ class IsomorphicLayout(LayoutCalculator):
         scale_degrees: List[int],
         scale_size: int,
         mos: Optional[sx.MOS] = None,
-        coord_to_scale_index: Optional[Dict[Tuple[int, int], int]] = None
+        coord_to_scale_index: Optional[Dict[Tuple[int, int], int]] = None,
+        enharmonic_vector: Optional[sx.Vector2i] = None,
+        mode_offset: int = 0
     ) -> Dict[Tuple[int, int], int]:
         """
         Calculate isomorphic mapping using IntegerAffineTransform.
@@ -169,11 +206,15 @@ class IsomorphicLayout(LayoutCalculator):
             scale_size: Total EDO steps
             mos: Optional MOS object for advanced mapping
             coord_to_scale_index: Optional mapping from MOS natural coordinate to scale index
+            enharmonic_vector: Optional vector for EDO-compatible enharmonic equivalents
+            mode_offset: Mode offset for enharmonic reduction
 
         Returns:
             Dict mapping (logical_x, logical_y) -> MIDI note number
         """
         mapping = {}
+        # Track which coords are mapped via enharmonic equivalence (for UI labeling)
+        self.enharmonic_coords: Dict[Tuple[int, int], Tuple[int, int]] = {}
 
         if not scale_degrees:
             return mapping
@@ -274,6 +315,41 @@ class IsomorphicLayout(LayoutCalculator):
                 logger.debug(f"Failed to map coordinate ({logical_x}, {logical_y}): {e}")
                 continue
 
+        # Second pass: map unmapped coords via enharmonic equivalence using vector_mod
+        if (enharmonic_vector is not None and mos is not None and
+                coord_to_scale_index is not None and
+                (enharmonic_vector.x != 0 or enharmonic_vector.y != 0)):
+            enharmonic_mapped = 0
+            v_n = (mos.a, mos.b)  # Period vector
+            v_m = (enharmonic_vector.x, enharmonic_vector.y)  # Enharmonic vector
+
+            for logical_x, logical_y in logical_coords:
+                coord = (logical_x, logical_y)
+                if coord in mapping:
+                    continue  # Already mapped in first pass
+
+                try:
+                    # Get MOS coordinate for this logical coord
+                    logical_vec = sx.Vector2i(logical_x, logical_y)
+                    mos_coord = inverse_transform.apply(logical_vec)
+                    mos_coord_tuple = (mos_coord.x, mos_coord.y)
+
+                    # Reduce to fundamental band using vector_mod
+                    equiv_coord = vector_mod(mos_coord_tuple, v_n, v_m, mode_offset)
+
+                    if equiv_coord != mos_coord_tuple and equiv_coord in coord_to_scale_index:
+                        note = coord_to_scale_index[equiv_coord]
+                        if 0 <= note <= 127:
+                            mapping[coord] = note
+                            self.enharmonic_coords[coord] = equiv_coord
+                            enharmonic_mapped += 1
+
+                except Exception as e:
+                    logger.debug(f"Enharmonic mapping failed for ({logical_x}, {logical_y}): {e}")
+
+            if enharmonic_mapped > 0:
+                logger.info(f"Enharmonic equivalence mapped {enharmonic_mapped} additional pads")
+
         logger.info(f"Isomorphic layout calculated: {len(mapping)} mapped pads")
         return mapping
 
@@ -287,7 +363,10 @@ class IsomorphicLayout(LayoutCalculator):
 
     def get_mos_coordinate(self, logical_x: int, logical_y: int) -> Tuple[int, int]:
         """
-        Get the MOS natural coordinate for a logical coordinate.
+        Get the effective MOS natural coordinate for a logical coordinate.
+
+        If the pad was mapped via enharmonic equivalence, returns the
+        equivalent MOS coordinate (for correct coloring and labeling).
 
         Args:
             logical_x: Logical X coordinate
@@ -296,6 +375,12 @@ class IsomorphicLayout(LayoutCalculator):
         Returns:
             Tuple of (mos_x, mos_y) natural coordinates
         """
+        coord = (logical_x, logical_y)
+
+        # If this pad was mapped via enharmonic equivalence, return the equivalent
+        if hasattr(self, 'enharmonic_coords') and coord in self.enharmonic_coords:
+            return self.enharmonic_coords[coord]
+
         try:
             inverse_transform = self.mapping_transform.inverse()
             logical_vec = sx.Vector2i(logical_x, logical_y)

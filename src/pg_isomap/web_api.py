@@ -5,7 +5,7 @@ Provides REST endpoints and WebSocket for real-time updates.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 class ConnectControllerRequest(BaseModel):
     """Request to connect to a controller."""
     device_name: str
+
+
+class SetDynamicOptionRequest(BaseModel):
+    """Request to set a dynamic UI option value."""
+    name: str
+    value: Any
 
 
 class LayoutConfigUpdate(BaseModel):
@@ -115,6 +121,9 @@ class WebAPI:
             # Load the configuration
             self.app.current_controller = config
 
+            # Load dynamic option values (saved prefs merged with YAML defaults)
+            self.app._load_dynamic_option_values()
+
             # Reset layout calculator to default when changing controllers
             self.app.current_layout_calculator = None
 
@@ -123,6 +132,12 @@ class WebAPI:
 
             logger.info(f"Switched to controller configuration: {request.device_name}")
             return {'success': True}
+
+        @self.fastapi.post("/api/controllers/set_option")
+        async def set_dynamic_option(request: SetDynamicOptionRequest):
+            """Set a dynamic UI option value and resend setup commands."""
+            success = self.app.set_dynamic_option(request.name, request.value)
+            return {'success': success}
 
         @self.fastapi.get("/api/layout")
         async def get_layout():
