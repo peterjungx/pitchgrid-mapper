@@ -89,6 +89,11 @@
   // Track which keys are currently pressed to prevent repeat triggers
   const pressedKeys: Set<string> = new Set();
 
+  // OSC connection hint popup
+  let showOscHint: boolean = false;
+  let oscHintTimer: ReturnType<typeof setTimeout> | null = null;
+  let wasOscConnected: boolean = false;
+
   // Pad label type: 'digits' (default), 'letters', 'mos_coords', 'device_coords', or 'midi_note'
   type LabelType = 'digits' | 'letters' | 'mos_coords' | 'device_coords' | 'midi_note';
   let padLabelType: LabelType = 'digits';
@@ -383,6 +388,13 @@
     connectWebSocket();
     fetchStatus();
 
+    // Show OSC connection hint after 2s if still disconnected at startup
+    oscHintTimer = setTimeout(() => {
+      if (!status?.osc_connected) {
+        showOscHint = true;
+      }
+    }, 2000);
+
     // Add keyboard event listeners with capture phase to intercept before focused elements
     document.addEventListener('keydown', handleKeyDown, { capture: true });
     document.addEventListener('keyup', handleKeyUp, { capture: true });
@@ -394,9 +406,38 @@
     selectedController = status.connected_controller;
   }
 
+  // Track OSC connection changes: auto-dismiss on connect, re-show on disconnect
+  $: if (status) {
+    if (status.osc_connected) {
+      showOscHint = false;
+      wasOscConnected = true;
+      if (oscHintTimer) {
+        clearTimeout(oscHintTimer);
+        oscHintTimer = null;
+      }
+    } else if (wasOscConnected) {
+      // Connection was lost — show hint after 2s grace period
+      if (!oscHintTimer) {
+        oscHintTimer = setTimeout(() => {
+          oscHintTimer = null;
+          if (!status?.osc_connected) {
+            showOscHint = true;
+          }
+        }, 2000);
+      }
+    }
+  }
+
+  function dismissOscHint() {
+    showOscHint = false;
+  }
+
   onDestroy(() => {
     if (ws) {
       ws.close();
+    }
+    if (oscHintTimer) {
+      clearTimeout(oscHintTimer);
     }
 
     // Remove keyboard event listeners (must match capture option used in addEventListener)
@@ -777,6 +818,53 @@
   {:else}
     <p>Loading...</p>
   {/if}
+
+  {#if showOscHint}
+    <div class="modal-overlay" on:click={dismissOscHint}>
+      <div class="modal-content" on:click|stopPropagation>
+        <h3>{wasOscConnected ? 'OSC Connection Lost' : 'Setup Required'}</h3>
+        <div class="osc-hint-body">
+          <div class="osc-hint-text">
+            {#if wasOscConnected}
+              <p>
+                The connection to the PitchGrid plugin was lost. Please check that:
+              </p>
+              <ol>
+                <li>The plugin is still loaded in your DAW.</li>
+                <li>
+                  <strong>"Sync Tuning Data via OSC"</strong> is still enabled in the
+                  plugin's output menu.
+                </li>
+              </ol>
+            {:else}
+              <p>
+                PitchGrid Mapper needs two things from the PitchGrid plugin:
+              </p>
+              <ol>
+                <li>
+                  Open the plugin's <strong>output menu</strong> and enable
+                  <strong>"Sync Tuning Data via OSC"</strong>.
+                </li>
+                <li>
+                  Route your DAW's MIDI from the <strong>"PitchGrid Mapper"</strong>
+                  virtual port to the plugin so it receives the remapped notes.
+                </li>
+              </ol>
+            {/if}
+            <p class="osc-hint-note">
+              Only one plugin instance can have OSC sync active at a time.
+            </p>
+          </div>
+          <img
+            src="/api/osc-help-screenshot"
+            alt="PitchGrid plugin output menu with 'Sync Tuning Data via OSC' enabled"
+            class="osc-hint-screenshot"
+          />
+        </div>
+        <button class="osc-hint-dismiss" on:click={dismissOscHint}>Got it</button>
+      </div>
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -991,5 +1079,95 @@
   .toolbar-btn:active {
     transform: scale(0.95);
     background-color: rgba(84, 206, 194, 0.2);
+  }
+
+  /* OSC hint modal */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 1.5em 2em;
+    max-width: 600px;
+  }
+
+  .modal-content h3 {
+    margin-top: 0;
+    margin-bottom: 0.75em;
+    color: #54cec2;
+    font-size: 1.1em;
+  }
+
+  .osc-hint-body {
+    display: flex;
+    gap: 1.5em;
+    align-items: flex-start;
+  }
+
+  .osc-hint-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .osc-hint-text p {
+    margin: 0 0 0.5em;
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: #ccc;
+  }
+
+  .osc-hint-text ol {
+    margin: 0;
+    padding-left: 1.2em;
+    font-size: 0.9em;
+    line-height: 1.6;
+    color: #ccc;
+  }
+
+  .osc-hint-text li {
+    margin-bottom: 0.5em;
+  }
+
+  .osc-hint-note {
+    margin-top: 0.75em;
+    font-size: 0.8em;
+    color: #888;
+    font-style: italic;
+  }
+
+  .osc-hint-screenshot {
+    flex-shrink: 0;
+    width: 180px;
+    border-radius: 6px;
+    border: 1px solid #444;
+  }
+
+  .osc-hint-dismiss {
+    display: block;
+    margin: 1em auto 0;
+    padding: 0.5em 2em;
+    border: 1px solid #54cec2;
+    border-radius: 4px;
+    background-color: rgba(84, 206, 194, 0.15);
+    color: #54cec2;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .osc-hint-dismiss:hover {
+    background-color: rgba(84, 206, 194, 0.3);
   }
 </style>

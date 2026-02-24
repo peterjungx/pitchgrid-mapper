@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .app import PGIsomapApp
-from .config import settings
+from .config import settings, _get_base_path
 from .layouts import LayoutConfig, LayoutType
 
 logger = logging.getLogger(__name__)
@@ -184,6 +184,14 @@ class WebAPI:
                 return {'success': True, 'note': note}
             else:
                 return {'success': False, 'error': 'Pad not mapped to a note'}
+
+        @self.fastapi.get("/api/osc-help-screenshot")
+        async def osc_help_screenshot():
+            """Serve the OSC setup help screenshot."""
+            screenshot_path = _get_base_path() / "assets" / "SyncTuningDataFeaturePluginScreenshot.png"
+            if screenshot_path.exists():
+                return FileResponse(screenshot_path, media_type="image/png")
+            return {"error": "Screenshot not found"}
 
         @self.fastapi.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
