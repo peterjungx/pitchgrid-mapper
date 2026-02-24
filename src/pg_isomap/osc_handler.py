@@ -2,6 +2,14 @@
 OSC communication with PitchGrid plugin.
 
 Receives scale information and note mappings from the plugin.
+
+Protocol:
+  - Receiver binds to a local port and sends heartbeats to the plugin
+    on port 34562: /pitchgrid/heartbeat [1, <my_port>]
+  - Plugin registers the receiver and sends data back to <my_port>
+  - Plugin sends its own heartbeat: /pitchgrid/heartbeat [1]
+  - Both sides consider the connection dead after 2s without a heartbeat
+  - Up to 9 receivers can connect simultaneously
 """
 
 import logging
@@ -20,12 +28,13 @@ class OSCHandler:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        server_port: int = 34561,  # Receive from plugin
+        server_port: int = 34561,  # Receive from plugin (0 = ephemeral)
         client_port: int = 34562   # Send to plugin
     ):
         self.host = host
         self.server_port = server_port  # Where we listen (receive from plugin)
         self.client_port = client_port  # Where we send (to plugin)
+        self.actual_port: int = 0       # Resolved after bind (may differ if ephemeral)
 
         # OSC Server (receives from plugin)
         self._server: Optional[osc_server.ThreadingOSCUDPServer] = None
@@ -46,15 +55,15 @@ class OSCHandler:
         # Current state
         self.current_scale_data = None
 
-        # Connection tracking
-        self._last_ack_time: float = 0
-        self._connection_timeout: float = 2.0  # Consider disconnected after 2 seconds
+        # Connection tracking — based on receiving plugin heartbeat
+        self._last_plugin_heartbeat: float = 0
+        self._connection_timeout: float = 2.0
         self.connected: bool = False
 
     @property
     def port(self) -> int:
-        """Return server port for compatibility."""
-        return self.server_port
+        """Return actual listening port."""
+        return self.actual_port or self.server_port
 
     def is_connected(self) -> bool:
         """Check if we're connected to the plugin."""
@@ -73,9 +82,9 @@ class OSCHandler:
 
         # Create dispatcher for incoming messages
         disp = dispatcher.Dispatcher()
+        disp.map("/pitchgrid/heartbeat", self._handle_plugin_heartbeat)
         disp.map("/pitchgrid/plugin/tuning", self._handle_tuning)
         disp.map("/pitchgrid/plugin/mapping", self._handle_mapping)
-        disp.map("/pitchgrid/heartbeat/ack", self._handle_heartbeat_ack)
         disp.map("/pitchgrid/scale", self._handle_scale_update)
         disp.map("/pitchgrid/notes", self._handle_note_mapping)
         disp.map("/pitchgrid/playing", self._handle_playing_notes)
@@ -85,6 +94,7 @@ class OSCHandler:
         self._server = osc_server.ThreadingOSCUDPServer(
             (self.host, self.server_port), disp
         )
+        self.actual_port = self._server.server_address[1]
 
         self._server_thread = threading.Thread(
             target=self._server.serve_forever,
@@ -93,7 +103,7 @@ class OSCHandler:
         self._server_thread.name = "OSC-Server"
         self._server_thread.start()
 
-        # Start heartbeat thread (sends heartbeat to plugin every 1 second)
+        # Start heartbeat thread (sends heartbeat with our port to plugin every 1 second)
         self._heartbeat_thread = threading.Thread(
             target=self._heartbeat_loop,
             daemon=True
@@ -111,8 +121,8 @@ class OSCHandler:
 
         logger.info(
             f"OSC communication started - "
-            f"Server: {self.host}:{self.server_port}, "
-            f"Client: {self.host}:{self.client_port}"
+            f"Listening: {self.host}:{self.actual_port}, "
+            f"Plugin: {self.host}:{self.client_port}"
         )
 
     def stop(self):
@@ -140,26 +150,29 @@ class OSCHandler:
         logger.info("OSC communication stopped")
 
     def _heartbeat_loop(self):
-        """Send periodic heartbeat to plugin."""
+        """Send periodic heartbeat to plugin, including our listen port."""
         while self._running:
             try:
                 if self._client:
-                    self._client.send_message("/pitchgrid/heartbeat", 1)
+                    self._client.send_message(
+                        "/pitchgrid/heartbeat",
+                        [1, self.actual_port]
+                    )
             except Exception as e:
                 logger.error(f"Error sending heartbeat: {e}")
 
-            time.sleep(1.0)  # Send heartbeat every second
+            time.sleep(1.0)
 
     def _monitor_connection(self):
-        """Monitor connection status based on heartbeat acknowledgments."""
+        """Monitor connection status based on receiving plugin heartbeats."""
         while self._running:
-            time_since_ack = time.time() - self._last_ack_time
+            time_since_heartbeat = time.time() - self._last_plugin_heartbeat
 
             was_connected = self.connected
 
-            if time_since_ack > self._connection_timeout:
+            if time_since_heartbeat > self._connection_timeout:
                 self.connected = False
-            elif time_since_ack <= self._connection_timeout and not self.connected:
+            elif time_since_heartbeat <= self._connection_timeout and not self.connected:
                 self.connected = True
 
             # Notify on connection state change
@@ -168,20 +181,20 @@ class OSCHandler:
                 if self.on_connection_changed:
                     self.on_connection_changed(self.connected)
 
-            time.sleep(0.5)  # Check every 500ms
+            time.sleep(0.5)
 
     def _default_handler(self, address: str, *args):
         """Handle unmapped OSC messages."""
         logger.debug(f"Received unmapped OSC: {address} {args}")
 
-    def _handle_heartbeat_ack(self, address: str, *args):
-        """Handle heartbeat acknowledgment from plugin."""
-        self._last_ack_time = time.time()
+    def _handle_plugin_heartbeat(self, address: str, *args):
+        """Handle heartbeat from plugin — connection is alive."""
+        self._last_plugin_heartbeat = time.time()
 
     def _handle_tuning(self, address: str, *args):
         """Handle tuning data from PitchGrid plugin."""
         logger.info(f"Received tuning data: {args}")
-        self._last_ack_time = time.time()
+        self._last_plugin_heartbeat = time.time()
 
         # Parse tuning data (mode, root_freq, stretch, skew, mode_offset, steps, mos_a, mos_b)
         if self.on_scale_update:
@@ -194,7 +207,7 @@ class OSCHandler:
     def _handle_mapping(self, address: str, *args):
         """Handle mapping data from PitchGrid plugin (frozen when mapping is locked)."""
         logger.info(f"Received mapping data: {args}")
-        self._last_ack_time = time.time()
+        self._last_plugin_heartbeat = time.time()
 
         # Parse mapping data (mode, root_freq, stretch, skew, mode_offset, steps, mos_a, mos_b)
         if self.on_mapping_update:
@@ -208,12 +221,8 @@ class OSCHandler:
         """Handle scale update from PitchGrid plugin."""
         logger.debug(f"Received scale update: {args}")
 
-        # Update connection timestamp
-        self._last_ack_time = time.time()
+        self._last_plugin_heartbeat = time.time()
 
-        # Parse scale data based on PitchGrid's OSC format
-        # This will depend on the actual format from the plugin
-        # Placeholder for now
         scale_data = {
             'address': address,
             'args': args
@@ -228,11 +237,8 @@ class OSCHandler:
         """Handle note mapping from PitchGrid plugin."""
         logger.debug(f"Received note mapping: {args}")
 
-        # Update connection timestamp
-        self._last_ack_time = time.time()
+        self._last_plugin_heartbeat = time.time()
 
-        # Parse note mapping data
-        # Format TBD based on plugin implementation
         mapping_data = {
             'address': address,
             'args': args
@@ -245,19 +251,4 @@ class OSCHandler:
         """Handle currently playing notes (for visualization)."""
         logger.debug(f"Received playing notes: {args}")
 
-        # Update connection timestamp
-        self._last_ack_time = time.time()
-
-        # This can be used to highlight notes in the UI
-
-    def send_unmapped_notes(self, host: str, port: int, unmapped_coords: list):
-        """
-        Send unmapped note coordinates back to PitchGrid (optional feature).
-
-        Args:
-            host: PitchGrid plugin host
-            port: PitchGrid plugin port
-            unmapped_coords: List of (x, y) coordinates that couldn't be mapped
-        """
-        # TODO: Implement if needed
-        pass
+        self._last_plugin_heartbeat = time.time()
