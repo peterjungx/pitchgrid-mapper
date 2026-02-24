@@ -19,7 +19,7 @@ dependencies = [
     "numpy>=1.26.0",
     "scipy>=1.12.0",
     "pywebview>=5.0.0",
-    "scalatrix @ git+https://github.com/peterjungx/scalatrix.git@06d484524b1ae69abf6558315f071a87e7470dad",
+    "scalatrix @ git+https://github.com/peterjungx/scalatrix.git@22acce1b50e9c66a3329a0b27891c7462e8054bb",
 ]
 
 [project.optional-dependencies]

@@ -68,6 +68,7 @@ class PGIsomapApp:
 
         # Setup callbacks
         self.osc_handler.on_scale_update = self._handle_scale_update
+        self.osc_handler.on_mapping_update = self._handle_mapping_update
         self.osc_handler.on_note_mapping = self._handle_note_mapping
         self.osc_handler.on_connection_changed = self._handle_osc_connection_changed
         self.midi_handler.get_scale_coord = self._get_scale_coordinate
@@ -498,37 +499,50 @@ class PGIsomapApp:
         self._send_pad_colors_async()
 
     def _handle_scale_update(self, scale_data: dict):
-        """Handle scale/tuning update from PitchGrid plugin."""
-        logger.info("Received scale/tuning update from PitchGrid")
+        """Handle tuning update from PitchGrid plugin (/pitchgrid/plugin/tuning).
+
+        This receives the current live tuning params, which may differ from
+        mapping params when mapping is locked. Currently stored for future use
+        (e.g., display, audio features). Layout recalculation is driven by
+        _handle_mapping_update instead.
+        """
+        logger.debug("Received tuning update from PitchGrid (stored, no layout recalc)")
+
+    def _handle_mapping_update(self, mapping_data: dict):
+        """Handle mapping update from PitchGrid plugin (/pitchgrid/plugin/mapping).
+
+        This receives the params used for MIDI mapping (frozen when mapping is
+        locked in the plugin). Drives layout recalculation.
+        """
+        logger.info("Received mapping update from PitchGrid")
 
         # Cancel any ongoing color send operation immediately
         # This prevents interleaved MIDI messages when rapid tuning changes arrive
         self.midi_handler.cancel_color_send()
 
-        # Check if this is tuning data from /pitchgrid/plugin/tuning
-        args = scale_data.get('args', [])
+        args = mapping_data.get('args', [])
 
-        if len(args) >= 7:
-            # Parse tuning data: (depth, mode, root_freq, stretch, skew, mode_offset, steps)
-            
-            depth, mode, root_freq, stretch, skew, mode_offset, steps = args[:7]
+        if len(args) >= 8:
+            # Parse mapping data: (mode, root_freq, stretch, skew, mode_offset, steps, mos_a, mos_b)
+            mode, root_freq, stretch, skew, mode_offset, steps, mos_a, mos_b = args[:8]
 
-            # Update tuning handler
+            # Update tuning handler with mapping params
             self.tuning_handler.update_tuning(
-                depth=depth,
                 mode=mode,
                 root_freq=root_freq,
                 stretch=stretch,
                 skew=skew,
                 mode_offset=mode_offset,
-                steps=steps
+                steps=steps,
+                mos_a=mos_a,
+                mos_b=mos_b
             )
 
-            # Recalculate layout with new scale degrees
+            # Recalculate layout with new mapping
             self._recalculate_layout()
 
         else:
-            logger.warning(f"Unexpected scale data format: {args}")
+            logger.warning(f"Unexpected mapping data format: {args}")
 
     def _handle_note_mapping(self, mapping_data: dict):
         """Handle note mapping update from PitchGrid plugin."""

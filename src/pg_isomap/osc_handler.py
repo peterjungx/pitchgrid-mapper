@@ -39,6 +39,7 @@ class OSCHandler:
 
         # Callbacks
         self.on_scale_update: Optional[Callable] = None
+        self.on_mapping_update: Optional[Callable] = None
         self.on_note_mapping: Optional[Callable] = None
         self.on_connection_changed: Optional[Callable] = None
 
@@ -73,6 +74,7 @@ class OSCHandler:
         # Create dispatcher for incoming messages
         disp = dispatcher.Dispatcher()
         disp.map("/pitchgrid/plugin/tuning", self._handle_tuning)
+        disp.map("/pitchgrid/plugin/mapping", self._handle_mapping)
         disp.map("/pitchgrid/heartbeat/ack", self._handle_heartbeat_ack)
         disp.map("/pitchgrid/scale", self._handle_scale_update)
         disp.map("/pitchgrid/notes", self._handle_note_mapping)
@@ -181,14 +183,26 @@ class OSCHandler:
         logger.info(f"Received tuning data: {args}")
         self._last_ack_time = time.time()
 
-        # Parse tuning data (depth, mode, root_freq, stretch, skew, mode_offset, steps)
-        # TODO: Process tuning data and update scale accordingly
+        # Parse tuning data (mode, root_freq, stretch, skew, mode_offset, steps, mos_a, mos_b)
         if self.on_scale_update:
             tuning_data = {
                 'address': address,
                 'args': args
             }
             self.on_scale_update(tuning_data)
+
+    def _handle_mapping(self, address: str, *args):
+        """Handle mapping data from PitchGrid plugin (frozen when mapping is locked)."""
+        logger.info(f"Received mapping data: {args}")
+        self._last_ack_time = time.time()
+
+        # Parse mapping data (mode, root_freq, stretch, skew, mode_offset, steps, mos_a, mos_b)
+        if self.on_mapping_update:
+            mapping_data = {
+                'address': address,
+                'args': args
+            }
+            self.on_mapping_update(mapping_data)
 
     def _handle_scale_update(self, address: str, *args):
         """Handle scale update from PitchGrid plugin."""

@@ -17,13 +17,14 @@ class TuningHandler:
 
     def __init__(self):
         # Tuning parameters from plugin
-        self.depth: int = 1
         self.mode: int = 0
         self.root_freq: float = 440.0
         self.stretch: float = 1.0
-        self.skew: float = 0.0
+        self.skew: float = 0.583333
         self.mode_offset: int = 0
         self.steps: int = 12
+        self.mos_a: int = 5
+        self.mos_b: int = 2
 
         # MOS object and scale info
         self.mos: Optional[sx.MOS] = None
@@ -45,36 +46,39 @@ class TuningHandler:
 
     def update_tuning(
         self,
-        depth: int,
         mode: int,
         root_freq: float,
         stretch: float,
         skew: float,
         mode_offset: int,
-        steps: int
+        steps: int,
+        mos_a: int,
+        mos_b: int
     ):
         """
         Update tuning parameters from OSC message.
 
         Args:
-            depth: MOS depth (generation)
             mode: Mode index
             root_freq: Root frequency in Hz
             stretch: Stretch factor
             skew: Skew factor
             mode_offset: Mode offset
             steps: Number of steps per period
+            mos_a: MOS a parameter (number of intervals of type A)
+            mos_b: MOS b parameter (number of intervals of type B)
         """
-        self.depth = max(1, int(depth))
         self.mode = int(mode)
         self.root_freq = float(root_freq)
         self.stretch = float(stretch)
         self.skew = float(skew)
         self.mode_offset = int(mode_offset)
         self.steps = max(1, int(steps))
+        self.mos_a = max(1, int(mos_a))
+        self.mos_b = max(1, int(mos_b))
 
         logger.info(
-            f"Tuning updated: depth={self.depth}, mode={self.mode}, "
+            f"Tuning updated: mos=({self.mos_a},{self.mos_b}), mode={self.mode}, "
             f"root_freq={self.root_freq}, stretch={self.stretch}, "
             f"skew={self.skew}, mode_offset={self.mode_offset}, steps={self.steps}"
         )
@@ -85,12 +89,13 @@ class TuningHandler:
     def _calculate_mos(self):
         """Calculate MOS from current tuning parameters."""
         try:
-            # Create MOS using fromG (depth, mode, skew, stretch, repetitions)
-            self.mos = sx.MOS.fromG(
-                self.depth,
+            # Create MOS using fromParams (a, b, mode, equave, generator, repetitions)
+            self.mos = sx.MOS.fromParams(
+                self.mos_a,
+                self.mos_b,
                 self.mode,
-                self.skew,
                 self.stretch,
+                self.skew,
                 1  # repetitions
             )
 
@@ -103,21 +108,9 @@ class TuningHandler:
             self.L = self.mos.nL
             self.s = self.mos.nS
 
-            onscreen_affine = sx.affineFromThreeDots(
-                sx.Vector2d(0,0), 
-                sx.Vector2d(self.mos.v_gen.x, self.mos.v_gen.y),
-                sx.Vector2d(self.mos.a, self.mos.b), 
-                sx.Vector2d(0, (self.mode_offset+.5)/self.steps),
-                sx.Vector2d(self.skew * self.stretch, (self.mode_offset+1.5)/self.steps),
-                sx.Vector2d(self.stretch, (self.mode_offset+.5)/self.steps)
-            )
-
-            # Calculate scale from MOS using implied affine transform
-            self.scale = sx.Scale.fromAffine(
-                onscreen_affine,
-                self.root_freq,
-                128,  # Max MIDI note
-                60  # MIDI root note -- might become dynamic later
+            # Generate mapped scale using the canonical method in scalatrix
+            self.scale = self.mos.generateMappedScale(
+                self.steps, self.mode_offset, self.root_freq, 128, 60
             )
 
             # Build dictionary from natural coordinate to scale index
@@ -128,7 +121,7 @@ class TuningHandler:
                 self.coord_to_scale_index[coord] = index
 
             logger.info(
-                f"MOS calculated: depth={self.depth}, mode={self.mode}, "
+                f"MOS calculated: ({self.mos_a},{self.mos_b}), mode={self.mode}, "
                 f"scale_system={self.L}L {self.s}s, {len(self.scale_degrees)} scale degrees, "
                 f"{len(self.coord_to_scale_index)} mapped coordinates"
             )
@@ -161,10 +154,11 @@ class TuningHandler:
             self.enharmonic_vector = None
             return
 
-        # Start from current depth and search for matching EDO
-        max_search_depth = self.depth + 20  # Reasonable limit
+        # Start from current depth (derived from MOS) and search for matching EDO
+        current_depth = self.mos.depth
+        max_search_depth = current_depth + 20  # Reasonable limit
 
-        for search_depth in range(self.depth, max_search_depth + 1):
+        for search_depth in range(current_depth, max_search_depth + 1):
             try:
                 edo_mos = sx.MOS.fromG(
                     search_depth,
@@ -227,7 +221,8 @@ class TuningHandler:
     def get_tuning_info(self) -> dict:
         """Get current tuning information as dict."""
         return {
-            'depth': self.depth,
+            'mos_a': self.mos_a,
+            'mos_b': self.mos_b,
             'mode': self.mode,
             'root_freq': self.root_freq,
             'stretch': self.stretch,
