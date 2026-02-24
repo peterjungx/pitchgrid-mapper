@@ -1,6 +1,7 @@
 """Main entry point for PitchGrid Mapper application."""
 
 import logging
+import os
 import sys
 
 import uvicorn
@@ -50,6 +51,12 @@ def main():
             sock.close()
         else:
             actual_port = settings.web_port
+
+        # Write port to file for dev tooling coordination
+        port_file_path = os.environ.get("PGISOMAP_PORT_FILE")
+        if port_file_path:
+            with open(port_file_path, "w") as f:
+                f.write(str(actual_port))
 
         logger.info(f"Web server starting on http://{settings.web_host}:{actual_port}")
 

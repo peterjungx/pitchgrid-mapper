@@ -57,21 +57,20 @@ fi
 
 echo ""
 echo "Starting Desktop App with Hot Reload..."
-echo "Backend API: http://localhost:8080"
-echo "Frontend Dev Server: http://localhost:5173 (with hot reload)"
 echo "Virtual MIDI Device: PitchGrid Mapper"
 echo ""
-echo "The desktop app window will load the dev server for hot reload."
 echo "Press Ctrl+C to stop all services"
 echo ""
+
+# Port file for backend to communicate its ephemeral port
+BACKEND_PORT_FILE="$PWD/.dev_backend_port"
+rm -f "$BACKEND_PORT_FILE"
 
 # Function to cleanup background processes
 cleanup() {
     echo ""
     echo "Stopping services..."
     if [ "$IS_WINDOWS" = true ]; then
-        # On Windows/Git Bash, use taskkill for more reliable process termination
-        # Kill the process groups
         taskkill //F //PID $BACKEND_PID 2>/dev/null || kill $BACKEND_PID 2>/dev/null || true
         taskkill //F //PID $FRONTEND_PID 2>/dev/null || kill $FRONTEND_PID 2>/dev/null || true
     else
@@ -80,51 +79,54 @@ cleanup() {
     fi
     wait $BACKEND_PID 2>/dev/null || true
     wait $FRONTEND_PID 2>/dev/null || true
+    rm -f "$BACKEND_PORT_FILE"
     echo "All services stopped"
     exit 0
 }
 
 trap cleanup SIGINT SIGTERM EXIT
 
-# Kill any existing processes on our ports (from previous runs)
-echo "Cleaning up any existing processes on ports 8080 and 5173..."
-if [ "$IS_WINDOWS" = true ]; then
-    # Find and kill processes using our ports
-    for port in 8080 5173; do
-        pid=$(netstat -ano 2>/dev/null | grep ":$port " | grep LISTENING | awk '{print $5}' | head -1)
-        if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-            echo "  Killing process $pid on port $port"
-            taskkill //F //PID $pid 2>/dev/null || true
-        fi
-    done
-else
-    # On Unix, use lsof or fuser
-    for port in 8080 5173; do
-        if command -v lsof &> /dev/null; then
-            pid=$(lsof -ti:$port 2>/dev/null || true)
-            if [ -n "$pid" ]; then
-                echo "  Killing process $pid on port $port"
-                kill -9 $pid 2>/dev/null || true
-            fi
-        fi
-    done
-fi
-sleep 1
+# Pick an available port for the frontend
+FRONTEND_PORT=$(uv run python -c "import socket; s=socket.socket(); s.bind(('',0)); print(s.getsockname()[1]); s.close()")
 
-# Start backend in background
+# Start backend with ephemeral port
 echo "Starting backend..."
 export PGISOMAP_DEBUG=true
-export PGISOMAP_WEB_PORT=8080  # Fixed port for dev mode (vite proxy expects this)
+export PGISOMAP_PORT_FILE="$BACKEND_PORT_FILE"
+# Don't set PGISOMAP_WEB_PORT — let the OS assign an ephemeral port
 uv run python -m pg_isomap &
 BACKEND_PID=$!
 
-# Give backend a moment to start
-sleep 2
+# Wait for backend to write its port file
+echo "Waiting for backend to start..."
+WAIT_COUNT=0
+while [ ! -f "$BACKEND_PORT_FILE" ] && kill -0 $BACKEND_PID 2>/dev/null; do
+    sleep 0.2
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if [ $WAIT_COUNT -ge 50 ]; then
+        echo "Error: Backend failed to start within timeout"
+        exit 1
+    fi
+done
 
-# Start frontend dev server in background
+if [ ! -f "$BACKEND_PORT_FILE" ]; then
+    echo "Error: Backend process exited before becoming ready"
+    exit 1
+fi
+
+BACKEND_PORT=$(cat "$BACKEND_PORT_FILE")
+
+echo ""
+echo "====================================="
+echo "  Backend API:  http://localhost:$BACKEND_PORT"
+echo "  Frontend Dev: http://localhost:$FRONTEND_PORT"
+echo "====================================="
+echo ""
+
+# Start frontend dev server with backend port for proxy
 echo "Starting frontend dev server..."
 cd frontend
-npm run dev &
+BACKEND_PORT=$BACKEND_PORT FRONTEND_PORT=$FRONTEND_PORT npm run dev &
 FRONTEND_PID=$!
 cd ..
 
@@ -136,11 +138,8 @@ echo "Opening desktop app window..."
 export PGISOMAP_DEV_MODE=true
 uv run python -c "
 import webview
-import sys
-import os
 
-# Point to dev server for hot reload
-url = 'http://localhost:5173'
+url = 'http://localhost:$FRONTEND_PORT'
 
 window = webview.create_window(
     title='PitchGrid Mapper (Dev)',

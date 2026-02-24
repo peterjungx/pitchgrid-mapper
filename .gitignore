@@ -71,6 +71,9 @@ logs/
 *.sqlite
 config/local.yaml
 
+# Dev tooling
+.dev_backend_port
+
 # Prototype/reference files
 _prototype_reference_main.py
 
